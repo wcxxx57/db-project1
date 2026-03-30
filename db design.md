@@ -54,6 +54,7 @@
   "created_at": DateTime,        // 创建时间
   "updated_at": DateTime,        // 更新时间
   "deadline": DateTime,          // 截止时间（null 表示无截止）
+  "response_count": Number,      // 已收集答卷数（派生字段，每次提交成功后 +1，用于列表页展示）
   "settings": {
     "allow_anonymous": Boolean,  // 是否允许匿名填写（true = 无需登录即可填写）
     "allow_multiple": Boolean    // 是否允许同一用户多次提交
@@ -146,6 +147,8 @@
    - `number_compare`：数字比较（支持 eq/ne/gt/gte/lt/lte/between）
 
 7. **匿名填写规则**：需求文档同时出现了"填写问卷的人需要先登录"和"系统需要支持匿名填写"两种表述，存在冲突。参考 Google Forms / 问卷星的常见使用方式，本系统采用如下解释：**若 `allow_anonymous = true`，则访问者可通过公开链接直接填写，无需登录；若 `allow_anonymous = false`，则填写者必须先登录后再提交**。该设计同时兼顾了公开分享场景与身份可追踪场景。
+
+8. **`response_count` 派生字段**：为提升问卷列表页的查询性能，在 `surveys` 中冗余保存已收集答卷数。该字段不作为源数据，而是在每次答卷提交成功后由后端同步 +1 更新。核心答题数据仍以 `responses` 集合中的原始记录为准。若出现计数不一致，可通过重新统计 `responses` 修复。
 
 ---
 
