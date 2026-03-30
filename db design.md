@@ -1,141 +1,226 @@
-### 核心集合（Collections）设计
+# MongoDB 数据库设计文档
 
-**1. users (用户) 集合**
+## 设计总览
+
+本系统采用三个核心集合：`users`、`surveys`、`responses`，分别存储用户信息、问卷（含嵌入式题目）和答题记录（含嵌入式答案）。
+
+**核心设计原则：**
+- 题目嵌入在问卷文档中（强一对多关系，总是一起查询，避免 JOIN）
+- 答案嵌入在答题记录中（原子操作单元，不可拆分）
+- 用户与问卷/答题之间使用 ObjectId 引用（松散耦合，便于扩展）
+- 校验规则、跳转逻辑均以数据驱动，不硬编码在程序中
+
+---
+
+## 集合（Collections）设计
+
+### 1. users（用户）集合
 
 存储用户账户信息。
 
 ```json
 {
   "_id": ObjectId,
-  "username": String,        // 用户名 (唯一，已建立索引)
-  "email": String,           // 邮箱 (唯一，已建立索引)
+  "username": String,        // 用户名（唯一）
+  "email": String,           // 邮箱（唯一）
   "password_hash": String,   // 密码哈希值
-  "created_at": DateTime,    // 创建时间
-  "updated_at": DateTime,    // 更新时间
-  "role": String             // 角色 ("admin" 或 "user"，用于未来基于角色的权限控制)
+  "created_at": DateTime,    // 注册时间
+  "updated_at": DateTime     // 更新时间
 }
 ```
 
-**索引 (Indexes):**
-* `username` (唯一索引)
-* `email` (唯一索引)
+**索引：**
+- `username`（唯一索引）
+- `email`（唯一索引）
+
+**设计说明：**
+- 需求只要求用户名、密码、注册时间，这里额外保留 `email` 字段用于后续可能的找回密码/通知功能。
+- 第一阶段不需要角色系统，暂不添加 `role` 字段，避免过度设计；如果第二阶段有权限需求，可以直接加字段，MongoDB 的 schema-less 特性天然支持。
 
 ---
 
-**2. surveys (问卷) 集合**
+### 2. surveys（问卷）集合
 
-存储问卷元数据和结构。
+存储问卷元数据、设置和嵌入的题目数组。
 
 ```json
 {
   "_id": ObjectId,
   "title": String,               // 问卷标题
   "description": String,         // 问卷说明
-  "creator_id": ObjectId,        // 创建者 ID (关联 users 集合的 _id)
-  "status": String,              // 状态 ("draft" 草稿, "published" 已发布, "closed" 已关闭)
+  "creator_id": ObjectId,        // 创建者 ID（关联 users._id）
+  "access_code": String,         // 公开访问码，用于生成分享链接 /survey/{access_code}
+  "status": String,              // 状态："draft"（草稿）/ "published"（已发布）/ "closed"（已关闭）
   "created_at": DateTime,        // 创建时间
   "updated_at": DateTime,        // 更新时间
+  "deadline": DateTime,          // 截止时间（null 表示无截止）
   "settings": {
-    "allow_anonymous": Boolean,  // 是否允许匿名填写
-    "allow_multiple": Boolean,   // 是否允许单个用户多次提交
-    "show_results": Boolean      // 是否向答题者展示结果
+    "allow_anonymous": Boolean,  // 是否允许匿名填写（true = 无需登录即可填写）
+    "allow_multiple": Boolean    // 是否允许同一用户多次提交
   },
-  "questions": [                 // 嵌套的题目数组
+  "questions": [                 // 嵌入的题目数组
     {
-      "question_id": String,     // 在问卷内唯一的标识，例如 "q1", "q2"
-      "type": String,            // 题目类型："single_choice" (单选), "multiple_choice" (多选), "text" (填空), "rating" (评分)
+      "question_id": String,     // 题目唯一标识，如 "q1", "q2"
+      "type": String,            // 题目类型："single_choice" / "multiple_choice" / "text_input" / "number_input"
       "title": String,           // 题目文本
       "required": Boolean,       // 是否必答
-      "options": [               // 选项数组 (用于选择类题目)
+      "order": Number,           // 显示顺序
+
+      // ---- 选项（仅 single_choice / multiple_choice 使用）----
+      "options": [
         {
-          "option_id": String,   // 选项标识，例如 "opt1", "opt2"
+          "option_id": String,   // 选项标识，如 "opt1", "opt2"
           "text": String         // 选项文本
         }
       ],
-      "logic": {                 // 条件跳转逻辑
-        "enabled": Boolean,      // 是否启用逻辑
-        "rules": [               // 规则数组
+
+      // ---- 校验规则（按题型区分）----
+      "validation": {
+        // 多选题校验
+        "min_selected": Number,    // 最少选择数量（仅 multiple_choice）
+        "max_selected": Number,    // 最多选择数量（仅 multiple_choice）
+        "exact_selected": Number,  // 必须选择的精确数量（仅 multiple_choice，优先级高于 min/max）
+
+        // 文本填空校验
+        "min_length": Number,      // 最少字数（仅 text_input）
+        "max_length": Number,      // 最多字数（仅 text_input）
+
+        // 数字填空校验
+        "min_value": Number,       // 最小值（仅 number_input）
+        "max_value": Number,       // 最大值（仅 number_input）
+        "integer_only": Boolean    // 是否必须为整数（仅 number_input）
+      },
+
+      // ---- 跳转逻辑 ----
+      "logic": {
+        "enabled": Boolean,        // 是否启用跳转逻辑
+        "rules": [
           {
             "condition": {
-              "option_id": String,     // 如果选择了该选项
-              "operator": String       // 操作符："equals" (等于), "contains" (包含) 等
+              "type": String,      // 条件类型："select_option" / "contains_option" / "number_compare"
+              // --- select_option（单选匹配）---
+              "option_id": String,           // 当选择了该选项时触发
+
+              // --- contains_option（多选包含）---
+              "option_ids": [String],        // 当选择的选项中包含这些时触发
+
+              // --- number_compare（数字比较）---
+              "operator": String,            // 操作符："eq" / "ne" / "gt" / "gte" / "lt" / "lte" / "between"
+              "value": Number,               // 比较值（用于 eq/ne/gt/gte/lt/lte）
+              "min_value": Number,           // 区间最小值（用于 between）
+              "max_value": Number            // 区间最大值（用于 between）
             },
             "action": {
-              "type": String,          // 动作类型："jump_to" (跳转至), "end_survey" (结束问卷)
-              "target_question_id": String  // 要跳转到的目标题目 ID
+              "type": String,                // 动作类型："jump_to" / "end_survey"
+              "target_question_id": String   // 跳转目标题目 ID（仅 jump_to 使用）
             }
           }
         ]
-      },
-      "order": Number            // 显示顺序
+      }
     }
   ]
 }
 ```
 
-**索引 (Indexes):**
-* `creator_id`
-* `status`
-* `created_at` (降序 descending)
+**索引：**
+- `creator_id`（查询用户自己的问卷）
+- `access_code`（唯一索引，通过分享链接快速定位问卷）
+- `status`（按状态筛选）
+- `created_at`（降序，用于列表排序）
 
-**设计思路 (Design Rationale):**
-* **题目被嵌套在问卷文档中**，因为它们之间具有强烈的“一对多”关系，并且业务上总是一起被查询出来。
-* 这种嵌套避免了类似关系型数据库的 JOIN 操作，大幅提高了读取性能。
-* `question_id` 和 `option_id` 使用字符串标识符，以便更轻松地在前后端实现条件跳转逻辑。
+**设计说明：**
+
+1. **题目嵌入问卷文档**：题目与问卷是强一对多关系，业务上总是一起查询和展示，嵌入可避免 JOIN，提高读取性能。这正是 MongoDB 文档模型的优势所在。
+
+2. **`access_code` 字段**：需求要求通过 `/survey/xxxxxx` 链接分发问卷。使用独立的短码字段（而非直接暴露 `_id`），更友好且安全，也便于后续实现自定义链接。
+
+3. **`deadline` 字段**：需求明确要求"设置问卷截止时间"，到期后系统应拒绝新的提交。
+
+4. **题型精确划分**：需求要求支持单选、多选、文本填空、数字填空四种题型。原设计中的 `rating` 类型不在需求范围内，已移除；将原来模糊的 `text` 拆分为 `text_input`（文本填空）和 `number_input`（数字填空），以便为不同题型配置不同的校验规则。
+
+5. **`validation` 字段**：需求明确要求多选题限制选择数量、文本限制字数、数字限制范围和整数约束。将这些校验规则以数据形式存在文档中，后端读取后执行校验，避免硬编码。不同题型只使用各自相关的字段，其余字段为空即可，MongoDB 的灵活 schema 天然支持这种设计。
+
+6. **跳转逻辑条件模型**：需求要求支持根据单选、多选、数字填空结果跳转。原设计只有 `option_id + operator` 过于笼统，现在按条件类型分为三种：
+   - `select_option`：单选匹配某选项
+   - `contains_option`：多选包含某些选项
+   - `number_compare`：数字比较（支持 eq/ne/gt/gte/lt/lte/between）
+
+7. **匿名填写规则**：需求文档同时出现了"填写问卷的人需要先登录"和"系统需要支持匿名填写"两种表述，存在冲突。参考 Google Forms / 问卷星的常见使用方式，本系统采用如下解释：**若 `allow_anonymous = true`，则访问者可通过公开链接直接填写，无需登录；若 `allow_anonymous = false`，则填写者必须先登录后再提交**。该设计同时兼顾了公开分享场景与身份可追踪场景。
 
 ---
 
-**3. responses (答题记录) 集合**
+### 3. responses（答题记录）集合
 
-存储单个用户对问卷的答题结果。
+存储单次问卷填写的完整结果。
 
 ```json
 {
   "_id": ObjectId,
-  "survey_id": ObjectId,         // 关联 surveys 集合的 _id
-  "respondent_id": ObjectId,     // 答题者 ID (关联 users 集合的 _id，若是匿名填写则为 null)
+  "survey_id": ObjectId,         // 关联 surveys._id
+  "respondent_id": ObjectId,     // 答题者 ID（关联 users._id；匿名填写时为 null）
+  "is_anonymous": Boolean,       // 是否为匿名提交
   "submitted_at": DateTime,      // 提交时间
-  "ip_address": String,          // IP 地址 (用于匿名追踪)
-  "answers": [                   // 答案数组
+  "ip_address": String,          // IP 地址（辅助匿名场景下的基础风控）
+  "user_agent": String,          // 浏览器 UA（辅助信息）
+  "answers": [                   // 嵌入的答案数组
     {
-      "question_id": String,     // 对应 surveys.questions 里的 question_id
-      "answer": Mixed            // 根据题目类型而定的灵活数据类型
-                                 // - 单选题 (single_choice): String (存 option_id)
-                                 // - 多选题 (multiple_choice): Array of Strings (存多个 option_id)
-                                 // - 填空题 (text): String (存文本或数字)
-                                 // - 评分题 (rating): Number (存数字)
+      "question_id": String,     // 对应 surveys.questions[].question_id
+      "answer": Mixed            // 答案值，根据题型不同：
+                                 // - single_choice: String（选中的 option_id）
+                                 // - multiple_choice: [String]（选中的 option_id 数组）
+                                 // - text_input: String（文本内容）
+                                 // - number_input: Number（数字值）
     }
   ],
-  "completion_time": Number      // 完成问卷所耗费的秒数
+  "completion_time": Number      // 完成问卷所用秒数（可选）
 }
 ```
 
-**索引 (Indexes):**
-* `survey_id` + `respondent_id` (复合索引，用于快速检查是否重复提交)
-* `survey_id` + `submitted_at` (复合索引，用于按时间进行数据统计)
-* `respondent_id`
+**索引：**
+- `survey_id` + `submitted_at`（复合索引，用于按时间查询某问卷的答题记录和统计）
+- `survey_id` + `respondent_id`（复合索引，用于查询某用户是否已提交过该问卷；注意：不设为唯一索引，因为 `allow_multiple` 允许重复提交）
+- `respondent_id`（单独索引，用于查询某用户的所有答题记录）
 
-**设计思路 (Design Rationale):**
-* **答案被嵌套在单条答题记录中**，因为它们属于同一次答题提交（不可分割的原子单元），并且总是一起被存取。
-* 使用 `question_id` 字符串进行匹配，允许灵活地进行数据聚合查询，而无需进行复杂的跨表查找。
-* `answer` 字段使用混合（Mixed）类型，以完美适应单选、多选、填空等不同题目类型的数据格式。
+**设计说明：**
+
+1. **答案嵌入答题记录**：一次提交的所有答案属于同一个原子操作单元，总是一起存取，嵌入是最自然的 MongoDB 建模方式。
+
+2. **`answer` 使用 Mixed 类型**：不同题型的答案格式不同（字符串 / 数组 / 数字），MongoDB 天然支持灵活类型。校验由后端根据对应 question 的 `type` 和 `validation` 规则进行，不依赖数据库层面的类型约束。
+
+3. **`is_anonymous` 字段**：虽然可以通过 `respondent_id == null` 来判断是否匿名，但显式存储一个布尔字段语义更清晰，也便于后续统计查询。
+
+4. **去重策略**：`survey_id + respondent_id` 复合索引是普通索引（非唯一），是否允许重复提交由业务逻辑根据 `surveys.settings.allow_multiple` 判断。匿名场景下 `respondent_id` 为 null，重复控制可通过 `ip_address` / `session` 辅助实现（第一阶段暂不强制）。
+
+5. **`ip_address` 和 `user_agent`**：为匿名填写场景提供基础的辅助追踪信息，不作为核心去重依据，但为后续阶段可能的防刷策略预留数据。
 
 ---
 
-### 扩展性考量 (Scalability Considerations)
+## 为什么适合 MongoDB
 
-1. **关注点分离 (Separation of Concerns):** 用户、问卷和答题记录分别放在不同的集合中，允许系统独立地对这三部分进行扩展和查询。
-2. **嵌套与引用的权衡 (Embedded vs Referenced):**
-   * 题目嵌套在问卷中（紧密耦合，总是一起查询）。
-   * 答案嵌套在答题记录中（原子操作单元）。
-   * 用户与问卷之间的关联使用 ObjectId 引用（松散耦合，便于未来扩展）。
-3. **条件逻辑支持 (Conditional Logic Support):** 题目中的 `logic` 字段通过数据结构配置来支持跳转逻辑，完全避免了硬编码，契合业务需求。
-4. **未来扩展方向 (Future Extensions):**
-   * 可新增 `survey_templates` 集合用于存储可复用的问卷模板。
-   * 可新增 `analytics` 集合用于存储定时计算好的统计缓存数据。
-   * 可以在 `surveys` 中增加 `collaborators` 数组，以支持多用户协同编辑问卷。
-   * 可以在 `surveys` 中增加 `tags` 数组用于问卷分类。
-5. **性能优化 (Performance):**
-   * 复合索引有效支持了高频的查询模式（如查重和统计）。
-   * 嵌套文档极大地减少了数据库的查询次数（Query Count）。
-   * MongoDB 灵活的 Schema 允许在不进行数据迁移的情况下随时增加新字段。
+1. **题目结构灵活**：不同题型有不同的字段（选项、校验规则、跳转条件），MongoDB 的文档模型天然支持这种异构嵌套，无需像关系数据库那样拆出多张关联表。
+2. **嵌入式文档减少查询**：题目嵌入问卷、答案嵌入答题记录，一次查询即可获取完整数据，无需 JOIN。
+3. **Schema 灵活演化**：第二阶段需求变更时可以直接添加新字段，无需 ALTER TABLE 或数据迁移。
+4. **校验和逻辑数据驱动**：`validation` 和 `logic` 以 JSON 结构存储在文档中，后端读取执行，完全避免硬编码。
+
+## 为什么不用关系数据库结构
+
+1. 关系数据库需要将题目、选项、校验规则、跳转规则分别建表，通过外键关联，查询时需要多次 JOIN，复杂度高。
+2. 不同题型的校验字段差异大，关系数据库需要大量可空列或多态表设计，不够自然。
+3. 问卷结构在发布后相对稳定（主要是读操作），非常适合 MongoDB 的嵌入式文档模型。
+
+---
+
+## 扩展性考量
+
+1. **关注点分离**：用户、问卷、答题记录分别在不同集合中，可独立扩展和优化。
+2. **嵌入 vs 引用的权衡**：
+   - 题目嵌入问卷（紧密耦合，总是一起查询）
+   - 答案嵌入答题记录（原子操作单元）
+   - 用户与问卷/答题之间使用 ObjectId 引用（松散耦合）
+3. **发布后题目不可修改**：第一阶段约定，问卷发布后不允许修改题目结构，以保证已有答题数据与题目的一致性。若第二阶段有此需求，可通过题目版本号或快照机制解决。
+4. **未来可扩展方向**：
+   - 新增 `survey_templates` 集合用于问卷模板
+   - 新增 `analytics` 集合用于统计缓存
+   - 在 `surveys` 中增加 `collaborators` 数组支持协同编辑
+   - 在 `users` 中增加 `role` 字段支持权限控制
+   - 在 `questions` 中增加 `version` 字段支持题目版本管理
