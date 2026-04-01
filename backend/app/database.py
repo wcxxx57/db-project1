@@ -33,7 +33,6 @@ def init_indexes():
 
     # users 集合索引
     db.users.create_index("username", unique=True)
-    db.users.create_index("email", unique=True)
 
     # surveys 集合索引
     db.surveys.create_index("creator_id")

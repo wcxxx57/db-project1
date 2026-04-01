@@ -4,21 +4,21 @@
 
 ## 1. 接口清单
 
-| 模块 | 方法 | 路径 | 鉴权 | 说明 |
-|------|------|------|------|------|
-| 认证 | POST | `/auth/register` | 无 | 用户注册 |
-| 认证 | POST | `/auth/login` | 无 | 用户登录 |
-| 问卷管理 | POST | `/surveys` | 需要 JWT | 创建问卷 |
-| 问卷管理 | GET | `/surveys/my` | 需要 JWT | 获取我的问卷列表 |
-| 问卷管理 | GET | `/surveys/{survey_id}` | 需要 JWT | 获取问卷详情（创建者） |
-| 问卷管理 | PUT | `/surveys/{survey_id}` | 需要 JWT | 编辑问卷（创建者） |
-| 问卷管理 | POST | `/surveys/{survey_id}/publish` | 需要 JWT | 发布问卷 |
-| 问卷管理 | POST | `/surveys/{survey_id}/close` | 需要 JWT | 关闭问卷 |
-| 问卷管理 | DELETE | `/surveys/{survey_id}` | 需要 JWT | 删除问卷 |
-| 填写 | GET | `/public/surveys/{access_code}` | 无 | 通过访问码获取可填写问卷 |
-| 填写 | POST | `/responses` | 条件鉴权 | 提交答卷 |
-| 统计 | GET | `/surveys/{survey_id}/statistics` | 需要 JWT | 获取问卷整体统计 |
-| 统计 | GET | `/surveys/{survey_id}/questions/{question_id}/statistics` | 需要 JWT | 获取单题统计 |
+| 模块     | 方法   | 路径                                                      | 鉴权     | 说明                     |
+| -------- | ------ | --------------------------------------------------------- | -------- | ------------------------ |
+| 认证     | POST   | `/auth/register`                                          | 无       | 用户注册                 |
+| 认证     | POST   | `/auth/login`                                             | 无       | 用户登录                 |
+| 问卷管理 | POST   | `/surveys`                                                | 需要 JWT | 创建问卷                 |
+| 问卷管理 | GET    | `/surveys/my`                                             | 需要 JWT | 获取我的问卷列表         |
+| 问卷管理 | GET    | `/surveys/{survey_id}`                                    | 需要 JWT | 获取问卷详情（创建者）   |
+| 问卷管理 | PUT    | `/surveys/{survey_id}`                                    | 需要 JWT | 编辑问卷（创建者）       |
+| 问卷管理 | POST   | `/surveys/{survey_id}/publish`                            | 需要 JWT | 发布问卷                 |
+| 问卷管理 | POST   | `/surveys/{survey_id}/close`                              | 需要 JWT | 关闭问卷                 |
+| 问卷管理 | DELETE | `/surveys/{survey_id}`                                    | 需要 JWT | 删除问卷                 |
+| 填写     | GET    | `/public/surveys/{access_code}`                           | 无       | 通过访问码获取可填写问卷 |
+| 填写     | POST   | `/responses`                                              | 条件鉴权 | 提交答卷                 |
+| 统计     | GET    | `/surveys/{survey_id}/statistics`                         | 需要 JWT | 获取问卷整体统计         |
+| 统计     | GET    | `/surveys/{survey_id}/questions/{question_id}/statistics` | 需要 JWT | 获取单题统计             |
 
 ## 2. 统一约定
 
@@ -62,15 +62,15 @@
 
 说明：第一阶段为降低联调复杂度，成功请求统一返回 HTTP `200`。
 
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 请求成功 |
-| 400 | 请求参数错误 |
-| 401 | 未认证或 Token 失效 |
-| 403 | 无权限访问 |
-| 404 | 资源不存在 |
-| 422 | 请求体或参数格式校验失败（FastAPI 默认行为） |
-| 500 | 服务器内部错误 |
+| 状态码 | 说明                                         |
+| ------ | -------------------------------------------- |
+| 200    | 请求成功                                     |
+| 400    | 请求参数错误                                 |
+| 401    | 未认证或 Token 失效                          |
+| 403    | 无权限访问                                   |
+| 404    | 资源不存在                                   |
+| 422    | 请求体或参数格式校验失败（FastAPI 默认行为） |
+| 500    | 服务器内部错误                               |
 
 补充说明：若项目接入统一异常转换，也可将框架原生 `422` 统一转换为 `400`，但需在实现与测试中保持一致。
 
@@ -112,16 +112,14 @@
 ```json
 {
   "username": "string",
-  "password": "string",
-  "email": "string"
+  "password": "string"
 }
 ```
 
 字段约束：
 
 - `username`：2-50 字符，唯一
-- `password`：6-128 字符
-- `email`：合法邮箱格式，唯一
+- `password`：8-128 字符
 
 **成功响应 data 结构**：
 
@@ -129,7 +127,6 @@
 {
   "user_id": "507f1f77bcf86cd799439011",
   "username": "testuser",
-  "email": "test@example.com",
   "created_at": "2026-04-01T00:00:00Z"
 }
 ```
@@ -156,7 +153,6 @@
   "user": {
     "user_id": "507f1f77bcf86cd799439011",
     "username": "testuser",
-    "email": "test@example.com",
     "created_at": "2026-04-01T00:00:00Z"
   }
 }
@@ -199,10 +195,10 @@
 
 **查询参数**：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `page` | Number | 否 | 1 | 页码 |
-| `page_size` | Number | 否 | 10 | 每页数量 |
+| 参数        | 类型   | 必填 | 默认值 | 说明     |
+| ----------- | ------ | ---- | ------ | -------- |
+| `page`      | Number | 否   | 1      | 页码     |
+| `page_size` | Number | 否   | 10     | 每页数量 |
 
 **请求体**：无
 
@@ -234,8 +230,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体**：无
@@ -266,10 +262,10 @@
       "required": true,
       "order": 1,
       "options": [
-        {"option_id": "opt1", "text": "非常满意"},
-        {"option_id": "opt2", "text": "满意"},
-        {"option_id": "opt3", "text": "一般"},
-        {"option_id": "opt4", "text": "不满意"}
+        { "option_id": "opt1", "text": "非常满意" },
+        { "option_id": "opt2", "text": "满意" },
+        { "option_id": "opt3", "text": "一般" },
+        { "option_id": "opt4", "text": "不满意" }
       ],
       "validation": {},
       "logic": {
@@ -295,10 +291,10 @@
       "required": true,
       "order": 2,
       "options": [
-        {"option_id": "opt1", "text": "功能A"},
-        {"option_id": "opt2", "text": "功能B"},
-        {"option_id": "opt3", "text": "功能C"},
-        {"option_id": "opt4", "text": "功能D"}
+        { "option_id": "opt1", "text": "功能A" },
+        { "option_id": "opt2", "text": "功能B" },
+        { "option_id": "opt3", "text": "功能C" },
+        { "option_id": "opt4", "text": "功能D" }
       ],
       "validation": {
         "min_selected": 1,
@@ -387,8 +383,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体结构**：
@@ -410,8 +406,8 @@
       "required": true,
       "order": 1,
       "options": [
-        {"option_id": "opt1", "text": "选项1"},
-        {"option_id": "opt2", "text": "选项2"}
+        { "option_id": "opt1", "text": "选项1" },
+        { "option_id": "opt2", "text": "选项2" }
       ],
       "validation": {},
       "logic": {
@@ -443,8 +439,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体**：无
@@ -472,8 +468,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体**：无
@@ -494,8 +490,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体**：无
@@ -510,8 +506,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数          | 类型   | 说明           |
+| ------------- | ------ | -------------- |
 | `access_code` | String | 问卷公开访问码 |
 
 **请求体**：无
@@ -542,18 +538,18 @@
       "required": true,
       "order": 1,
       "options": [
-        {"option_id": "opt1", "text": "非常满意"},
-        {"option_id": "opt2", "text": "满意"},
-        {"option_id": "opt3", "text": "一般"},
-        {"option_id": "opt4", "text": "不满意"}
+        { "option_id": "opt1", "text": "非常满意" },
+        { "option_id": "opt2", "text": "满意" },
+        { "option_id": "opt3", "text": "一般" },
+        { "option_id": "opt4", "text": "不满意" }
       ],
       "validation": {},
       "logic": {
         "enabled": true,
         "rules": [
           {
-            "condition": {"type": "select_option", "option_id": "opt4"},
-            "action": {"type": "jump_to", "target_question_id": "q4"}
+            "condition": { "type": "select_option", "option_id": "opt4" },
+            "action": { "type": "jump_to", "target_question_id": "q4" }
           }
         ]
       }
@@ -565,11 +561,11 @@
       "required": true,
       "order": 2,
       "options": [
-        {"option_id": "opt1", "text": "功能A"},
-        {"option_id": "opt2", "text": "功能B"}
+        { "option_id": "opt1", "text": "功能A" },
+        { "option_id": "opt2", "text": "功能B" }
       ],
-      "validation": {"min_selected": 1, "max_selected": 2},
-      "logic": {"enabled": false, "rules": []}
+      "validation": { "min_selected": 1, "max_selected": 2 },
+      "logic": { "enabled": false, "rules": [] }
     },
     {
       "question_id": "q3",
@@ -578,8 +574,8 @@
       "required": false,
       "order": 3,
       "options": [],
-      "validation": {"min_length": 10, "max_length": 500},
-      "logic": {"enabled": false, "rules": []}
+      "validation": { "min_length": 10, "max_length": 500 },
+      "logic": { "enabled": false, "rules": [] }
     },
     {
       "question_id": "q4",
@@ -588,8 +584,8 @@
       "required": true,
       "order": 4,
       "options": [],
-      "validation": {"min_value": 1, "max_value": 150, "integer_only": true},
-      "logic": {"enabled": false, "rules": []}
+      "validation": { "min_value": 1, "max_value": 150, "integer_only": true },
+      "logic": { "enabled": false, "rules": [] }
     }
   ]
 }
@@ -647,8 +643,8 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数        | 类型   | 说明    |
+| ----------- | ------ | ------- |
 | `survey_id` | String | 问卷 ID |
 
 **请求体**：无
@@ -667,10 +663,30 @@
       "type": "single_choice",
       "total_answers": 150,
       "option_statistics": [
-        {"option_id": "opt1", "text": "非常满意", "count": 80, "percentage": 53.33},
-        {"option_id": "opt2", "text": "满意", "count": 50, "percentage": 33.33},
-        {"option_id": "opt3", "text": "一般", "count": 15, "percentage": 10.0},
-        {"option_id": "opt4", "text": "不满意", "count": 5, "percentage": 3.33}
+        {
+          "option_id": "opt1",
+          "text": "非常满意",
+          "count": 80,
+          "percentage": 53.33
+        },
+        {
+          "option_id": "opt2",
+          "text": "满意",
+          "count": 50,
+          "percentage": 33.33
+        },
+        {
+          "option_id": "opt3",
+          "text": "一般",
+          "count": 15,
+          "percentage": 10.0
+        },
+        {
+          "option_id": "opt4",
+          "text": "不满意",
+          "count": 5,
+          "percentage": 3.33
+        }
       ]
     },
     {
@@ -679,8 +695,18 @@
       "type": "multiple_choice",
       "total_answers": 150,
       "option_statistics": [
-        {"option_id": "opt1", "text": "功能A", "count": 120, "percentage": 80.0},
-        {"option_id": "opt2", "text": "功能B", "count": 90, "percentage": 60.0}
+        {
+          "option_id": "opt1",
+          "text": "功能A",
+          "count": 120,
+          "percentage": 80.0
+        },
+        {
+          "option_id": "opt2",
+          "text": "功能B",
+          "count": 90,
+          "percentage": 60.0
+        }
       ]
     },
     {
@@ -688,11 +714,7 @@
       "title": "请简要描述您的建议",
       "type": "text_input",
       "total_answers": 130,
-      "text_responses": [
-        "建议增加更多功能",
-        "界面很好用",
-        "希望优化性能"
-      ]
+      "text_responses": ["建议增加更多功能", "界面很好用", "希望优化性能"]
     },
     {
       "question_id": "q4",
@@ -716,9 +738,9 @@
 
 **路径参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `survey_id` | String | 问卷 ID |
+| 参数          | 类型   | 说明    |
+| ------------- | ------ | ------- |
+| `survey_id`   | String | 问卷 ID |
 | `question_id` | String | 题目 ID |
 
 **请求体**：无
@@ -737,8 +759,13 @@
   "type": "single_choice",
   "total_answers": 150,
   "option_statistics": [
-    {"option_id": "opt1", "text": "非常满意", "count": 80, "percentage": 53.33},
-    {"option_id": "opt2", "text": "满意", "count": 50, "percentage": 33.33}
+    {
+      "option_id": "opt1",
+      "text": "非常满意",
+      "count": 80,
+      "percentage": 53.33
+    },
+    { "option_id": "opt2", "text": "满意", "count": 50, "percentage": 33.33 }
   ]
 }
 ```
@@ -752,11 +779,7 @@
   "title": "请简要描述您的建议",
   "type": "text_input",
   "total_answers": 130,
-  "text_responses": [
-    "建议增加更多功能",
-    "界面很好用",
-    "希望优化性能"
-  ]
+  "text_responses": ["建议增加更多功能", "界面很好用", "希望优化性能"]
 }
 ```
 
@@ -786,14 +809,15 @@
 
 ```json
 {
-  "question_id": "string",     // 题目唯一标识，如 "q1"
-  "type": "string",            // 题型：single_choice / multiple_choice / text_input / number_input
-  "title": "string",           // 题目文本
-  "required": true,            // 是否必答
-  "order": 1,                  // 显示顺序
-  "options": [],               // 选项数组（仅选择题使用，填空题传空数组）
-  "validation": {},            // 校验规则（按题型不同，字段不同）
-  "logic": {                   // 跳转逻辑
+  "question_id": "string", // 题目唯一标识，如 "q1"
+  "type": "string", // 题型：single_choice / multiple_choice / text_input / number_input
+  "title": "string", // 题目文本
+  "required": true, // 是否必答
+  "order": 1, // 显示顺序
+  "options": [], // 选项数组（仅选择题使用，填空题传空数组）
+  "validation": {}, // 校验规则（按题型不同，字段不同）
+  "logic": {
+    // 跳转逻辑
     "enabled": false,
     "rules": []
   }
@@ -806,25 +830,25 @@
 
 **多选题 (multiple_choice)**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `min_selected` | Number | 最少选择数量 |
-| `max_selected` | Number | 最多选择数量 |
+| 字段             | 类型   | 说明                                     |
+| ---------------- | ------ | ---------------------------------------- |
+| `min_selected`   | Number | 最少选择数量                             |
+| `max_selected`   | Number | 最多选择数量                             |
 | `exact_selected` | Number | 必须选择的精确数量（优先级高于 min/max） |
 
 **文本填空 (text_input)**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
+| 字段         | 类型   | 说明     |
+| ------------ | ------ | -------- |
 | `min_length` | Number | 最少字数 |
 | `max_length` | Number | 最多字数 |
 
 **数字填空 (number_input)**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `min_value` | Number | 最小值 |
-| `max_value` | Number | 最大值 |
+| 字段           | 类型    | 说明           |
+| -------------- | ------- | -------------- |
+| `min_value`    | Number  | 最小值         |
+| `max_value`    | Number  | 最大值         |
 | `integer_only` | Boolean | 是否必须为整数 |
 
 ### 7.3 跳转逻辑结构
@@ -891,12 +915,12 @@
 
 ### 7.4 各题型答案格式（提交答卷时）
 
-| 题型 | answer 类型 | 示例 |
-|------|-------------|------|
-| `single_choice` | String（选中的 option_id） | `"opt1"` |
+| 题型              | answer 类型                       | 示例               |
+| ----------------- | --------------------------------- | ------------------ |
+| `single_choice`   | String（选中的 option_id）        | `"opt1"`           |
 | `multiple_choice` | [String]（选中的 option_id 数组） | `["opt1", "opt3"]` |
-| `text_input` | String（文本内容） | `"这是我的回答"` |
-| `number_input` | Number（数字值） | `85` |
+| `text_input`      | String（文本内容）                | `"这是我的回答"`   |
+| `number_input`    | Number（数字值）                  | `85`               |
 
 ### 7.5 各题型统计返回格式
 
@@ -908,32 +932,32 @@
 
 ## 8. 错误码说明
 
-| 错误码 | 说明 |
-|--------|------|
-| 1001 | 用户名已存在 |
-| 1002 | 用户名或密码错误 |
-| 1003 | Token 无效或已过期 |
-| 2001 | 问卷不存在 |
-| 2002 | 无权限操作该问卷 |
-| 2003 | 问卷已关闭 |
-| 2004 | 问卷已过期 |
-| 2005 | 访问码无效 |
-| 3001 | 答案校验失败 |
-| 3002 | 不允许重复提交 |
-| 3003 | 必填题未回答 |
+| 错误码 | 说明               |
+| ------ | ------------------ |
+| 1001   | 用户名已存在       |
+| 1002   | 用户名或密码错误   |
+| 1003   | Token 无效或已过期 |
+| 2001   | 问卷不存在         |
+| 2002   | 无权限操作该问卷   |
+| 2003   | 问卷已关闭         |
+| 2004   | 问卷已过期         |
+| 2005   | 访问码无效         |
+| 3001   | 答案校验失败       |
+| 3002   | 不允许重复提交     |
+| 3003   | 必填题未回答       |
 
 ### 8.1 业务错误码与 HTTP 状态码映射
 
-| 业务错误码 | 对应 HTTP 状态码 | 说明 |
-|------------|------------------|------|
-| 1001 | 400 | 用户名已存在 |
-| 1002 | 400 | 用户名或密码错误 |
-| 1003 | 401 | Token 无效或已过期 |
-| 2001 | 404 | 问卷不存在 |
-| 2002 | 403 | 无权限操作该问卷 |
-| 2003 | 400 | 问卷已关闭 |
-| 2004 | 400 | 问卷已过期 |
-| 2005 | 400 | 访问码无效 |
-| 3001 | 400 | 答案校验失败 |
-| 3002 | 400 | 不允许重复提交 |
-| 3003 | 400 | 必填题未回答 |
+| 业务错误码 | 对应 HTTP 状态码 | 说明               |
+| ---------- | ---------------- | ------------------ |
+| 1001       | 400              | 用户名已存在       |
+| 1002       | 400              | 用户名或密码错误   |
+| 1003       | 401              | Token 无效或已过期 |
+| 2001       | 404              | 问卷不存在         |
+| 2002       | 403              | 无权限操作该问卷   |
+| 2003       | 400              | 问卷已关闭         |
+| 2004       | 400              | 问卷已过期         |
+| 2005       | 400              | 访问码无效         |
+| 3001       | 400              | 答案校验失败       |
+| 3002       | 400              | 不允许重复提交     |
+| 3003       | 400              | 必填题未回答       |

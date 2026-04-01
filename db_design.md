@@ -5,6 +5,7 @@
 本系统采用三个核心集合：`users`、`surveys`、`responses`，分别存储用户信息、问卷（含嵌入式题目）和答题记录（含嵌入式答案）。
 
 **核心设计原则：**
+
 - 题目嵌入在问卷文档中（强一对多关系，总是一起查询，避免 JOIN）
 - 答案嵌入在答题记录中（原子操作单元，不可拆分）
 - 用户与问卷/答题之间使用 ObjectId 引用（松散耦合，便于扩展）
@@ -22,20 +23,19 @@
 {
   "_id": ObjectId,
   "username": String,        // 用户名（唯一）
-  "email": String,           // 邮箱（唯一）
   "password_hash": String,   // 密码哈希值
-  "created_at": DateTime,    // 注册时间
-  "updated_at": DateTime     // 更新时间
+  "created_at": DateTime     // 注册时间
 }
 ```
 
 **索引：**
+
 - `username`（唯一索引）
-- `email`（唯一索引）
 
 **设计说明：**
 
-- 需求只要求用户名、密码、注册时间，这里额外保留 `email` 字段用于后续可能的找回密码/通知功能。
+- 第一阶段账号字段保持最小集合：用户名、密码哈希、注册时间。
+- 注册密码约束为 8-128 字符。
 - 第一阶段不需要角色系统，暂不添加 `role` 字段，避免过度设计；如果第二阶段有权限需求，可以直接加字段，MongoDB 的 schema-less 特性天然支持。
 
 ---
@@ -102,7 +102,7 @@
               "type": String,      // 条件类型："select_option" / "contains_option" / "number_compare"
               // --- select_option（单选匹配）---
               "option_id": String,           // 当选择了该选项时触发
-              
+
 
               // --- contains_option（多选包含）---
               "option_ids": [String],        // 当选择的选项中包含这些时触发
@@ -127,6 +127,7 @@
 ```
 
 **索引：**
+
 - `creator_id`（查询用户自己的问卷）
 - `access_code`（唯一索引，通过分享链接快速定位问卷）
 - `status`（按状态筛选）
@@ -183,6 +184,7 @@
 ```
 
 **索引：**
+
 - `survey_id` + `submitted_at`（复合索引，用于按时间查询某问卷的答题记录和统计）
 - `survey_id` + `respondent_id`（复合索引，用于查询某用户是否已提交过该问卷；注意：不设为唯一索引，因为 `allow_multiple` 允许重复提交）
 - `respondent_id`（单独索引，用于查询某用户的所有答题记录）
@@ -229,4 +231,5 @@
    - 新增 `analytics` 集合用于统计缓存
    - 在 `surveys` 中增加 `collaborators` 数组支持协同编辑
    - 在 `users` 中增加 `role` 字段支持权限控制
-  - 在 `questions` 中增加 `version` 字段支持题目版本管理
+
+- 在 `questions` 中增加 `version` 字段支持题目版本管理

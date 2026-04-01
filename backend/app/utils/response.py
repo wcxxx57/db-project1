@@ -14,7 +14,7 @@ def success_response(data: Any = None, message: str = "success") -> dict:
     }
     """
     return {
-        "code": 200,
+        "code": 0,
         "message": message,
         "data": data,
     }
@@ -41,14 +41,19 @@ def error_response(
     }
 
 
-# 常用错误码
 class ErrorCodes:
-    VALIDATION_ERROR = "VALIDATION_ERROR"
-    NOT_FOUND = "NOT_FOUND"
-    UNAUTHORIZED = "UNAUTHORIZED"
-    FORBIDDEN = "FORBIDDEN"
-    DUPLICATE = "DUPLICATE"
-    SURVEY_CLOSED = "SURVEY_CLOSED"
-    SURVEY_EXPIRED = "SURVEY_EXPIRED"
-    SURVEY_NOT_PUBLISHED = "SURVEY_NOT_PUBLISHED"
-    ALREADY_SUBMITTED = "ALREADY_SUBMITTED"
+    """业务错误码（与 API 文档保持一致）"""
+
+    USERNAME_EXISTS = 1001
+    INVALID_CREDENTIALS = 1002
+    INVALID_TOKEN = 1003
+
+    SURVEY_NOT_FOUND = 2001
+    NO_PERMISSION = 2002
+    SURVEY_CLOSED = 2003
+    SURVEY_EXPIRED = 2004
+    INVALID_ACCESS_CODE = 2005
+
+    ANSWER_VALIDATION_FAILED = 3001
+    DUPLICATE_SUBMISSION = 3002
+    REQUIRED_QUESTION_MISSING = 3003

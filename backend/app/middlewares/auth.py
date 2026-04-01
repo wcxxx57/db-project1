@@ -9,7 +9,8 @@ from passlib.context import CryptContext
 from app.config import settings
 
 # 密码哈希工具
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 彻底切换到 pbkdf2_sha256，避免对 bcrypt 后端的依赖与兼容问题。
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # Bearer token 提取器
 security = HTTPBearer()
