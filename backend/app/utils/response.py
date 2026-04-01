@@ -8,44 +8,36 @@ def success_response(data: Any = None, message: str = "success") -> dict:
 
     返回格式：
     {
-        "success": true,
+        "code": 200,
         "message": "success",
         "data": { ... }
     }
     """
     return {
-        "success": True,
+        "code": 200,
         "message": message,
         "data": data,
     }
 
 
 def error_response(
-    code: str = "UNKNOWN_ERROR",
+    code: int = 400,
     message: str = "未知错误",
-    details: Any = None,
+    data: Any = None,
 ) -> dict:
     """错误响应
 
     返回格式：
     {
-        "success": false,
-        "error": {
-            "code": "VALIDATION_ERROR",
-            "message": "...",
-            "details": { ... }  // 可选
-        }
+        "code": 400,
+        "message": "错误信息",
+        "data": null
     }
     """
-    error = {
+    return {
         "code": code,
         "message": message,
-    }
-    if details is not None:
-        error["details"] = details
-    return {
-        "success": False,
-        "error": error,
+        "data": data,
     }
 
 

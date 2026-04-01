@@ -34,6 +34,7 @@
 - `email`（唯一索引）
 
 **设计说明：**
+
 - 需求只要求用户名、密码、注册时间，这里额外保留 `email` 字段用于后续可能的找回密码/通知功能。
 - 第一阶段不需要角色系统，暂不添加 `role` 字段，避免过度设计；如果第二阶段有权限需求，可以直接加字段，MongoDB 的 schema-less 特性天然支持。
 
@@ -101,9 +102,11 @@
               "type": String,      // 条件类型："select_option" / "contains_option" / "number_compare"
               // --- select_option（单选匹配）---
               "option_id": String,           // 当选择了该选项时触发
+              
 
               // --- contains_option（多选包含）---
               "option_ids": [String],        // 当选择的选项中包含这些时触发
+              "match_type": "any", // "any" 代表(OR), "all" 代表 (AND)
 
               // --- number_compare（数字比较）---
               "operator": String,            // 操作符："eq" / "ne" / "gt" / "gte" / "lt" / "lte" / "between"
@@ -220,10 +223,10 @@
    - 题目嵌入问卷（紧密耦合，总是一起查询）
    - 答案嵌入答题记录（原子操作单元）
    - 用户与问卷/答题之间使用 ObjectId 引用（松散耦合）
-3. **发布后题目不可修改**：第一阶段约定，问卷发布后不允许修改题目结构，以保证已有答题数据与题目的一致性。若第二阶段有此需求，可通过题目版本号或快照机制解决。
+3. **发布后题目结构变更限制**：第一阶段约定，若问卷已有答卷数据，则不允许再修改题目结构，以保证统计口径和历史答卷解释一致。
 4. **未来可扩展方向**：
    - 新增 `survey_templates` 集合用于问卷模板
    - 新增 `analytics` 集合用于统计缓存
    - 在 `surveys` 中增加 `collaborators` 数组支持协同编辑
    - 在 `users` 中增加 `role` 字段支持权限控制
-   - 在 `questions` 中增加 `version` 字段支持题目版本管理
+  - 在 `questions` 中增加 `version` 字段支持题目版本管理

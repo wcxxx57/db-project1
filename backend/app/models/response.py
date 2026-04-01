@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class Answer(BaseModel):
     """单个题目的答案"""
     question_id: str = Field(..., description="对应的题目 ID")
-    answer: Union[str, List[str], int, float, None] = Field(
+    answer: Union[str, List[str], int, float] = Field(
         ...,
         description="答案值: single_choice→str, multiple_choice→[str], text_input→str, number_input→Number"
     )
@@ -20,6 +20,8 @@ class Answer(BaseModel):
 
 class ResponseSubmitRequest(BaseModel):
     """提交答卷请求"""
+    survey_id: str = Field(..., description="问卷 ID")
+    access_code: str = Field(..., description="问卷访问码")
     answers: List[Answer] = Field(..., description="答案列表")
     completion_time: Optional[int] = Field(None, description="完成问卷所用秒数")
 
@@ -28,7 +30,7 @@ class ResponseSubmitRequest(BaseModel):
 
 class ResponseDetail(BaseModel):
     """答卷详情响应"""
-    id: str = Field(..., description="答卷 ID")
+    response_id: str = Field(..., description="答卷 ID")
     survey_id: str = Field(..., description="问卷 ID")
     respondent_id: Optional[str] = Field(None, description="答题者 ID（匿名时为 null）")
     is_anonymous: bool = Field(..., description="是否为匿名提交")
@@ -39,7 +41,7 @@ class ResponseDetail(BaseModel):
 
 class ResponseListItem(BaseModel):
     """答卷列表项"""
-    id: str = Field(..., description="答卷 ID")
+    response_id: str = Field(..., description="答卷 ID")
     respondent_id: Optional[str] = Field(None, description="答题者 ID")
     is_anonymous: bool = Field(..., description="是否匿名")
     submitted_at: datetime = Field(..., description="提交时间")

@@ -10,7 +10,7 @@ You are a senior full-stack engineer and an expert in MongoDB database. We are c
 
 5.Coding stantards:
     - Due to the possibility of requirement changes in the second phase of the project, the current architecture design must ensure sufficient scalability and the code cannot be hardcoded.
-    - Use **Python + FastAPI** as the backend framework.The front end doesn't need to be overly complicated. Clarity and simplicity are sufficient,you can use HTML+JavaScript to complete it.
+    - Use **Python + FastAPI** as the backend framework.
     - The interface design should comply with the RESTful standard and return data in a unified JSON format.
     - Write code that is friendly to testing, with module decoupling to facilitate the subsequent development of automated test cases.
 

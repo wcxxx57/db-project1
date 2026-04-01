@@ -17,6 +17,7 @@ class ContainsOptionCondition(BaseModel):
     """多选包含条件"""
     type: str = Field(default="contains_option", description="条件类型")
     option_ids: List[str] = Field(..., description="当选择的选项中包含这些时触发")
+    match_type: str = Field(default="any", description="匹配方式: any / all")
 
 
 class NumberCompareCondition(BaseModel):
@@ -118,7 +119,7 @@ class SurveyUpdateRequest(BaseModel):
 
 class SurveyResponse(BaseModel):
     """问卷响应"""
-    id: str = Field(..., description="问卷 ID")
+    survey_id: str = Field(..., description="问卷 ID")
     title: str = Field(..., description="问卷标题")
     description: Optional[str] = Field(None, description="问卷说明")
     creator_id: str = Field(..., description="创建者 ID")
@@ -134,7 +135,7 @@ class SurveyResponse(BaseModel):
 
 class SurveyListItem(BaseModel):
     """问卷列表项（不含题目详情）"""
-    id: str = Field(..., description="问卷 ID")
+    survey_id: str = Field(..., description="问卷 ID")
     title: str = Field(..., description="问卷标题")
     description: Optional[str] = Field(None, description="问卷说明")
     status: str = Field(..., description="状态")

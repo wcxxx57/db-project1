@@ -24,7 +24,7 @@ class UserLoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     """用户信息响应（不含密码）"""
-    id: str = Field(..., description="用户 ID")
+    user_id: str = Field(..., description="用户 ID")
     username: str = Field(..., description="用户名")
     email: str = Field(..., description="邮箱")
     created_at: datetime = Field(..., description="注册时间")
