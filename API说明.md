@@ -15,8 +15,10 @@
 | 问卷管理 | POST   | `/surveys/{survey_id}/publish`                            | 需要 JWT | 发布问卷                 |
 | 问卷管理 | POST   | `/surveys/{survey_id}/close`                              | 需要 JWT | 关闭问卷                 |
 | 问卷管理 | DELETE | `/surveys/{survey_id}`                                    | 需要 JWT | 删除问卷                 |
+| 答卷管理 | GET    | `/surveys/{survey_id}/responses`                          | 需要 JWT | 获取问卷的所有答卷列表   |
+| 答卷管理 | GET    | `/responses/{response_id}`                                | 需要 JWT | 获取答卷详情             |
 | 填写     | GET    | `/public/surveys/{access_code}`                           | 无       | 通过访问码获取可填写问卷 |
-| 填写     | POST   | `/responses`                                              | 条件鉴权 | 提交答卷                 |
+| 填写     | POST   | `/responses`                                              | 需要 JWT | 提交答卷                 |
 | 统计     | GET    | `/surveys/{survey_id}/statistics`                         | 需要 JWT | 获取问卷整体统计         |
 | 统计     | GET    | `/surveys/{survey_id}/questions/{question_id}/statistics` | 需要 JWT | 获取单题统计             |
 
@@ -75,16 +77,15 @@
 
 ### 2.4 鉴权与访问控制规则
 
-- `POST /responses` 条件鉴权规则：
-  - `survey.settings.allow_anonymous = true`：可匿名提交（也要带token，因为实验要求填写必须登录）
-  - `survey.settings.allow_anonymous = false`：必须登录提交（必须带 token）
+- `POST /responses` 必须登录（必须携带 JWT Token），即填写问卷也要求是注册用户。
+  - `survey.settings.allow_anonymous = true`：允许前端表单中选择匿名提交 `is_anonymous: true`，提交后系统统计将隐去答题者真实身份。
+  - `survey.settings.allow_anonymous = false`：提交时将强制记录答题者真实身份并参与系统统计展示。
 - 问卷创建/编辑/发布/关闭/删除/统计仅创建者可操作。
 - 仅 `status = published` 的问卷可通过公开访问码获取/提交答卷。
 - `deadline` 已过期时，拒绝新答卷提交。
 - `allow_multiple = false` 时：
-  - 登录用户：同一 `survey_id + respondent_id` 不可重复提交。
-  - 匿名用户（第一阶段）：不做强制拦截，可基于 `ip_address + user_agent + access_code` 做风险提示或弱限制。
-- 业务错误码 `3002` 默认用于登录用户重复提交被拦截的场景；匿名用户仅在显式开启"匿名强限制"策略时才返回 `3002`。
+  - 同一 `survey_id + respondent_id` (用户ID) 不可重复提交，将返回 3002 错误码拦截。
+- `allow_multiple = true` 时，允许重复提交，系统分别记录。
 
 ### 2.5 问卷状态与编辑规则
 
@@ -429,14 +430,7 @@
   - 会自动忽略找不到定义的题目和选项
   - 在统计结果中添加警告信息提示数据不完整
 
-**成功响应 data 结构**：
-
-```json
-{
-  "survey_id": "507f1f77bcf86cd799439012",
-  "updated_at": "2026-04-01T01:00:00Z"
-}
-```
+**成功响应 data 结构**：跟 `GET /surveys/{survey_id}` 的问卷详情结构一致（返回完整的、已更新的问卷对象）。
 
 ### 4.5 发布问卷
 
@@ -450,22 +444,13 @@
 
 **请求体**：无
 
-**成功响应 data 结构**：
-
-```json
-{
-  "survey_id": "507f1f77bcf86cd799439012",
-  "status": "published",
-  "access_code": "ABC123",
-  "share_url": "http://localhost:3000/survey/ABC123"
-}
-```
+**成功响应 data 结构**：跟 `GET /surveys/{survey_id}` 的问卷详情结构一致（表示状态扭转成功后的问卷数据）。
 
 说明：
 
-- `share_url` 为前端填写页路由地址。
+- `status` 会变更为 `published`。
+- 前端可通过问卷的 `access_code` 自行拼接前端页面的 `share_url`。
 - 填写页数据由后端公开接口 `GET /public/surveys/{access_code}` 提供。
-- `share_url` 中的域名应通过环境配置生成（如前端站点域名），示例中的 `http://localhost:3000` 仅用于本地开发演示。
 
 ### 4.6 关闭问卷
 
@@ -479,15 +464,7 @@
 
 **请求体**：无
 
-**成功响应 data 结构**：
-
-```json
-{
-  "survey_id": "507f1f77bcf86cd799439012",
-  "status": "closed",
-  "updated_at": "2026-04-01T01:20:00Z"
-}
-```
+**成功响应 data 结构**：跟 `GET /surveys/{survey_id}` 的问卷详情结构一致（表示状态扭转成功后的问卷数据，`status` 变更为 `closed`）。
 
 ### 4.7 删除问卷
 
@@ -634,9 +611,22 @@
 {
   "response_id": "507f1f77bcf86cd799439013",
   "survey_id": "507f1f77bcf86cd799439012",
-  "submitted_at": "2026-04-01T02:00:00Z"
+  "submitted_at": "2026-04-01T02:00:00Z",
+  "submission_count": 1
 }
 ```
+
+### 5.3 获取答卷列表 (创建者使用)
+
+**接口**：`GET /surveys/{survey_id}/responses`
+
+**说明**：获取问卷所有填写的答卷列表展示。需要 JWT 鉴权。
+
+### 5.4 获取单份答卷详情 (创建者使用)
+
+**接口**：`GET /responses/{response_id}`
+
+**说明**：根据 Response ID 返回单份具体的答卷详细数据结构。需要 JWT 鉴权。
 
 ## 6. 统计分析接口
 

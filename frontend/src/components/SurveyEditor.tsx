@@ -822,8 +822,8 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                                   >
                                     <option value="">选择目标题目</option>
                                     {questions
-                                      .filter((tq) => tq.question_id !== q.question_id)
-                                      .map((tq, ti) => (
+                                      .filter((tq) => tq.order > q.order)
+                                      .map((tq) => (
                                         <option key={tq.question_id} value={tq.question_id}>
                                           Q{questions.indexOf(tq) + 1} - {tq.title || "(未命名)"}
                                         </option>

@@ -405,7 +405,7 @@ def submit_response(
             )
 
     # 12. 构建答卷文档并存储（始终保存 respondent_id）
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     response_doc = {
         "survey_id": ObjectId(survey_id),
         "respondent_id": ObjectId(respondent_id),
