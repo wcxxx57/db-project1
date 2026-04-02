@@ -224,6 +224,9 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
         prev.map((q) => {
           if (q.question_id !== qid) return q;
           const opts = q.options || [];
+          const uniqueSuffix = `${Date.now().toString(36)}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
           const newOpt: QuestionOption = {
             option_id: `opt_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
             text: `选项${opts.length + 1}`,

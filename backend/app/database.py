@@ -1,5 +1,7 @@
 """MongoDB 数据库连接模块"""
 
+from datetime import timezone
+
 from pymongo import MongoClient
 from pymongo.database import Database
 from app.config import settings
@@ -13,7 +15,7 @@ def get_db() -> Database:
     """获取数据库实例（单例模式）"""
     global _client, _db
     if _db is None:
-        _client = MongoClient(settings.MONGODB_URI)
+        _client = MongoClient(settings.MONGODB_URI, tz_aware=True, tzinfo=timezone.utc)
         _db = _client[settings.MONGODB_DB_NAME]
     return _db
 

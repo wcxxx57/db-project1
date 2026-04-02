@@ -9,6 +9,16 @@ from app.database import get_db
 from app.models.survey import SurveyCreateRequest
 from app.utils.response import ErrorCodes
 
+
+def _to_utc_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize datetime to UTC-aware for safe comparison."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 class SurveyServiceError(Exception):
     def __init__(self, business_code: int, message: str, http_status: int = 400):
         self.business_code = business_code
@@ -35,7 +45,7 @@ def _serialize_survey(doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": doc["status"],
         "created_at": doc["created_at"],
         "updated_at": doc["updated_at"],
-        "deadline": doc.get("deadline"),
+        "deadline": _to_utc_aware(doc.get("deadline")),
         "response_count": doc.get("response_count", 0),
         "settings": doc.get("settings", {"allow_anonymous": True, "allow_multiple": False}),
         "questions": doc.get("questions", []),
@@ -50,7 +60,7 @@ def _serialize_survey_list_item(doc: Dict[str, Any]) -> Dict[str, Any]:
         "description": doc.get("description"),
         "status": doc["status"],
         "created_at": doc["created_at"],
-        "deadline": doc.get("deadline"),
+        "deadline": _to_utc_aware(doc.get("deadline")),
         "response_count": doc.get("response_count", 0),
         "access_code": doc["access_code"],
     }
@@ -71,7 +81,7 @@ def create_survey(user_id: str, request: SurveyCreateRequest) -> Dict[str, Any]:
         "status": "draft",
         "created_at": now,
         "updated_at": now,
-        "deadline": request.deadline,
+        "deadline": _to_utc_aware(request.deadline),
         "response_count": 0,
         "settings": settings,
         "questions": [],
@@ -211,7 +221,7 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     if request.settings is not None:
         update_fields["settings"] = request.settings.model_dump()
     if request.deadline is not None:
-        update_fields["deadline"] = request.deadline
+        update_fields["deadline"] = _to_utc_aware(request.deadline)
     if request.questions is not None:
         # 验证题目的 validation 规则
         questions_dict = [q.model_dump() for q in request.questions]
@@ -244,8 +254,8 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
     if doc.get("status") != "published":
         raise SurveyServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
-    deadline = doc.get("deadline")
-    if deadline and deadline.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    deadline = _to_utc_aware(doc.get("deadline"))
+    if deadline and deadline < datetime.now(timezone.utc):
         raise SurveyServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     settings = doc.get("settings", {"allow_anonymous": True, "allow_multiple": False})
@@ -265,7 +275,7 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
         "title": doc.get("title", ""),
         "description": doc.get("description"),
         "access_code": doc.get("access_code"),
-        "deadline": doc.get("deadline"),
+        "deadline": deadline,
         "settings": settings,
         "questions": doc.get("questions", []),
         "has_submitted": has_submitted,

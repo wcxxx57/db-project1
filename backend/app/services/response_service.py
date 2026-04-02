@@ -19,6 +19,15 @@ class ResponseServiceError(Exception):
         self.http_status = http_status
 
 
+def _to_utc_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize datetime to UTC-aware for safe comparison."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 # ====================================================================
 #  跳转逻辑引擎
 # ====================================================================
@@ -318,8 +327,8 @@ def submit_response(
         raise ResponseServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
     # 4. 验证截止时间
-    deadline = survey.get("deadline")
-    if deadline and deadline.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    deadline = _to_utc_aware(survey.get("deadline"))
+    if deadline and deadline < datetime.now(timezone.utc):
         raise ResponseServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     # 5. 登录校验：必须登录才能填写

@@ -2,8 +2,6 @@
 
 本文档以 `db_design.md` 为准，适用于 FastAPI + MongoDB 项目联调。
 
-==不知道返回问卷整体情况的时候会不会延迟太大==
-
 ## 1. 接口清单
 
 | 模块     | 方法   | 路径                                                      | 鉴权     | 说明                     |
@@ -74,12 +72,11 @@
 | 422    | 请求体或参数格式校验失败（FastAPI 默认行为） |
 | 500    | 服务器内部错误                               |
 
-补充说明：若项目接入统一异常转换，也可将框架原生 `422` 统一转换为 `400`，但需在实现与测试中保持一致。
 
 ### 2.4 鉴权与访问控制规则
 
 - `POST /responses` 条件鉴权规则：
-  - `survey.settings.allow_anonymous = true`：可匿名提交（可不带 token）
+  - `survey.settings.allow_anonymous = true`：可匿名提交（也要带token，因为实验要求填写必须登录）
   - `survey.settings.allow_anonymous = false`：必须登录提交（必须带 token）
 - 问卷创建/编辑/发布/关闭/删除/统计仅创建者可操作。
 - 仅 `status = published` 的问卷可通过公开访问码获取/提交答卷。
@@ -89,19 +86,13 @@
   - 匿名用户（第一阶段）：不做强制拦截，可基于 `ip_address + user_agent + access_code` 做风险提示或弱限制。
 - 业务错误码 `3002` 默认用于登录用户重复提交被拦截的场景；匿名用户仅在显式开启"匿名强限制"策略时才返回 `3002`。
 
-弱限制建议（匿名场景）：
-
-- 可按时间窗口检测高频提交（例如同一问卷同一 `ip_address + user_agent` 在短时间内重复提交）。
-- 命中风险规则时仍允许提交成功，但可在响应中追加提示字段（如 `warning`），并记录日志用于后续排查。
-
 ### 2.5 问卷状态与编辑规则
 
 - 状态枚举：`draft | published | closed`
 - 默认：创建后为 `draft`
 - 发布：`draft/closed -> published`
 - 关闭：`published -> closed`
-- 编辑题目结构：仅允许 `draft` 或 `closed` 状态
-- 若问卷已发布且 `response_count > 0`，关闭后仍不允许修改 `questions` 结构（可修改标题、描述、截止时间、设置）
+- 编辑题目结构：仅允许 `draft` 或 `closed` 状态下编辑，`published`状态下应先`closed`才能修改
 
 ## 3. 用户认证接口
 
