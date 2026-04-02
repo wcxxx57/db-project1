@@ -468,7 +468,7 @@ def get_response_list(survey_id: str, creator_id: str) -> List[Dict[str, Any]]:
 
         results.append({
             "response_id": str(doc["_id"]),
-            "respondent_id": rid_str,
+            "respondent_id": None if is_anon else rid_str,
             "is_anonymous": is_anon,
             "respondent_name": user_map.get(rid_str, "未知用户") if rid_str and not is_anon else None,
             "submitted_at": doc["submitted_at"],

@@ -38,7 +38,9 @@ function OptionStatsWithDropdown({ options }: { options: OptionStatistic[] }) {
               <button
                 type="button"
                 onClick={() =>
-                  setExpandedOptionId((prev) => (prev === option.option_id ? null : option.option_id))
+                  setExpandedOptionId((prev) =>
+                    prev === option.option_id ? null : option.option_id,
+                  )
                 }
                 style={{
                   border: "none",
@@ -58,7 +60,9 @@ function OptionStatsWithDropdown({ options }: { options: OptionStatistic[] }) {
             {isExpanded && (
               <div style={{ margin: "4px 0 10px 4px" }}>
                 {respondents.length === 0 ? (
-                  <p className="no-data" style={{ margin: 0 }}>暂无用户</p>
+                  <p className="no-data" style={{ margin: 0 }}>
+                    暂无用户
+                  </p>
                 ) : (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {respondents.map((user, idx) => (
@@ -130,15 +134,21 @@ function QuestionStatCard({ stat }: { stat: QuestionStatistic }) {
           <div className="num-stat-row">
             <div className="num-stat-box">
               <span className="num-stat-label">平均值</span>
-              <span className="num-stat-value">{stat.number_statistics.average}</span>
+              <span className="num-stat-value">
+                {stat.number_statistics.average}
+              </span>
             </div>
             <div className="num-stat-box">
               <span className="num-stat-label">最小值</span>
-              <span className="num-stat-value">{stat.number_statistics.min}</span>
+              <span className="num-stat-value">
+                {stat.number_statistics.min}
+              </span>
             </div>
             <div className="num-stat-box">
               <span className="num-stat-label">最大值</span>
-              <span className="num-stat-value">{stat.number_statistics.max}</span>
+              <span className="num-stat-value">
+                {stat.number_statistics.max}
+              </span>
             </div>
           </div>
         </div>
@@ -147,7 +157,10 @@ function QuestionStatCard({ stat }: { stat: QuestionStatistic }) {
   );
 }
 
-export default function StatisticsView({ surveyId, onBack }: StatisticsViewProps) {
+export default function StatisticsView({
+  surveyId,
+  onBack,
+}: StatisticsViewProps) {
   const [stats, setStats] = useState<SurveyStatistics | null>(null);
   const [responses, setResponses] = useState<ResponseListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,11 +184,13 @@ export default function StatisticsView({ surveyId, onBack }: StatisticsViewProps
     })();
   }, [surveyId]);
 
-  // 按 respondent_id 分组匿名答卷
+  // 匿名答卷强制作为独立记录进行渲染，实名答卷按用户合并
   const groupedResponses = (() => {
     const groups: Record<string, ResponseListItem[]> = {};
     for (const r of responses) {
-      const key = r.respondent_id || r.response_id;
+      const key = r.is_anonymous
+        ? r.response_id
+        : r.respondent_id || r.response_id;
       if (!groups[key]) groups[key] = [];
       groups[key].push(r);
     }
@@ -190,8 +205,14 @@ export default function StatisticsView({ surveyId, onBack }: StatisticsViewProps
         <div className="blob blob-yellow" />
         <div className="fill-card">
           <div className="accent-bar" />
-          <div className="card-content" style={{ textAlign: "center", padding: "60px 40px" }}>
-            <div className="generating-spinner" style={{ margin: "0 auto 24px" }} />
+          <div
+            className="card-content"
+            style={{ textAlign: "center", padding: "60px 40px" }}
+          >
+            <div
+              className="generating-spinner"
+              style={{ margin: "0 auto 24px" }}
+            />
             <p>加载统计中…</p>
           </div>
         </div>
@@ -234,7 +255,13 @@ export default function StatisticsView({ surveyId, onBack }: StatisticsViewProps
             <button className="back-link" onClick={onBack}>
               ← 返回
             </button>
-            <div className="brand-icon" style={{ background: "linear-gradient(135deg, var(--blue-lighter), var(--blue-light))" }}>
+            <div
+              className="brand-icon"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--blue-lighter), var(--blue-light))",
+              }}
+            >
               📊
             </div>
             <div style={{ textAlign: "center" }}>
@@ -263,54 +290,69 @@ export default function StatisticsView({ surveyId, onBack }: StatisticsViewProps
         </div>
 
         {/* 统计概览 Tab */}
-        {tab === "stats" && stats!.question_statistics.map((qs) => (
-          <QuestionStatCard key={qs.question_id} stat={qs} />
-        ))}
+        {tab === "stats" &&
+          stats!.question_statistics.map((qs) => (
+            <QuestionStatCard key={qs.question_id} stat={qs} />
+          ))}
 
         {/* 答卷列表 Tab */}
         {tab === "responses" && (
           <div className="fill-card">
             <div className="card-content">
               {responses.length === 0 ? (
-                <p className="no-data" style={{ textAlign: "center", padding: 24, color: "var(--brown-light)" }}>暂无答卷</p>
+                <p
+                  className="no-data"
+                  style={{
+                    textAlign: "center",
+                    padding: 24,
+                    color: "var(--brown-light)",
+                  }}
+                >
+                  暂无答卷
+                </p>
               ) : (
                 <div className="response-list">
-                  {Object.entries(groupedResponses).map(([userId, userResponses]) => {
-                    const first = userResponses[0];
-                    const displayName = first.is_anonymous
-                      ? `匿名用户 #${userId.slice(-6)}`
-                      : first.respondent_name || "未知用户";
-                    const hasMultiple = userResponses.length > 1;
+                  {Object.entries(groupedResponses).map(
+                    ([userId, userResponses]) => {
+                      const first = userResponses[0];
+                      const displayName = first.is_anonymous
+                        ? `匿名用户 #${userId.slice(-6)}`
+                        : first.respondent_name || "未知用户";
+                      const hasMultiple = userResponses.length > 1;
 
-                    return (
-                      <div key={userId} className="response-group">
-                        <div className="response-group-header">
-                          <span className="respondent-name">
-                            {first.is_anonymous ? "🙈 " : "👤 "}
-                            {displayName}
-                          </span>
-                          {hasMultiple && (
-                            <span className="response-count-badge">
-                              提交了 {userResponses.length} 次
+                      return (
+                        <div key={userId} className="response-group">
+                          <div className="response-group-header">
+                            <span className="respondent-name">
+                              {first.is_anonymous ? "🙈 " : "👤 "}
+                              {displayName}
                             </span>
-                          )}
-                        </div>
-                        {userResponses.map((r, ri) => (
-                          <div key={r.response_id} className="response-item">
-                            <span className="response-time">
-                              {hasMultiple ? `第 ${ri + 1} 次 · ` : ""}
-                              {new Date(r.submitted_at).toLocaleString("zh-CN")}
-                            </span>
-                            {r.completion_time != null && (
-                              <span className="response-duration">
-                                用时 {Math.floor(r.completion_time / 60)}分{r.completion_time % 60}秒
+                            {hasMultiple && (
+                              <span className="response-count-badge">
+                                提交了 {userResponses.length} 次
                               </span>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    );
-                  })}
+                          {userResponses.map((r, ri) => (
+                            <div key={r.response_id} className="response-item">
+                              <span className="response-time">
+                                {hasMultiple ? `第 ${ri + 1} 次 · ` : ""}
+                                {new Date(r.submitted_at).toLocaleString(
+                                  "zh-CN",
+                                )}
+                              </span>
+                              {r.completion_time != null && (
+                                <span className="response-duration">
+                                  用时 {Math.floor(r.completion_time / 60)}分
+                                  {r.completion_time % 60}秒
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    },
+                  )}
                 </div>
               )}
             </div>

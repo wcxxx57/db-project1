@@ -19,14 +19,25 @@ import {
   AUTH_USER_KEY,
   AUTH_TOKEN_KEY,
 } from "../services/api";
-import type { Survey } from "../types";
+import type { SurveyListItem } from "../types";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
-  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [copyToast, setCopyToast] = useState<{
+    visible: boolean;
+    type: "success" | "error";
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: "success",
+    title: "",
+    message: "",
+  });
   const navigate = useNavigate();
 
   const userStr = localStorage.getItem(AUTH_USER_KEY);
@@ -58,11 +69,11 @@ export default function Dashboard() {
   const handleCreate = async () => {
     setIsCreating(true);
     try {
-      await createSurvey({
+      const result = await createSurvey({
         title: "未命名问卷",
         description: "点击编辑以修改详细内容",
       });
-      fetchSurveys();
+      navigate("/editor/" + result.survey_id);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -101,17 +112,25 @@ export default function Dashboard() {
     }
   };
 
-  const handleCopyLink = (accessCode: string | null) => {
+  const handleCopyLink = async (accessCode: string | null) => {
     if (!accessCode) return;
     const url = window.location.origin + "/s/" + accessCode;
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        alert("问卷链接已复制到剪贴板！\n" + url);
-      })
-      .catch((err) => {
-        alert("复制失败，请手动复制: " + url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyToast({
+        visible: true,
+        type: "success",
+        title: "复制成功",
+        message: `问卷链接：${url}\n已复制到剪贴板，去群聊或聊天窗口粘贴分享吧。`,
       });
+    } catch {
+      setCopyToast({
+        visible: true,
+        type: "error",
+        title: "复制失败",
+        message: "请手动复制链接：" + url,
+      });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -148,6 +167,30 @@ export default function Dashboard() {
         } as React.CSSProperties
       }
     >
+      {copyToast.visible && (
+        <div className="dashboard-center-toast-mask" role="dialog" aria-modal="true">
+          <div className={`dashboard-center-toast dashboard-center-toast-${copyToast.type}`}>
+            <div className="dashboard-center-toast-head">
+              <strong>{copyToast.title}</strong>
+              <button
+                type="button"
+                className="dashboard-center-toast-close"
+                onClick={() =>
+                  setCopyToast((prev) => ({
+                    ...prev,
+                    visible: false,
+                  }))
+                }
+                aria-label="关闭弹窗"
+              >
+                ×
+              </button>
+            </div>
+            <p>{copyToast.message}</p>
+          </div>
+        </div>
+      )}
+
       {/* Background Ornaments - Hidden */}
       <div
         className="fixed inset-0 pointer-events-none overflow-hidden z-0"
