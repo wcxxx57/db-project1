@@ -1,6 +1,6 @@
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
@@ -58,7 +58,7 @@ def _serialize_survey_list_item(doc: Dict[str, Any]) -> Dict[str, Any]:
 def create_survey(user_id: str, request: SurveyCreateRequest) -> Dict[str, Any]:
     """创建问卷"""
     db = get_db()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     access_code = _generate_access_code()
 
     settings = request.settings.model_dump() if request.settings else {"allow_anonymous": True, "allow_multiple": False}
@@ -126,7 +126,7 @@ def publish_survey(survey_id: str, user_id: str) -> dict:
     if survey["status"] != "published":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
-            {"$set": {"status": "published", "updated_at": datetime.utcnow()}}
+            {"$set": {"status": "published", "updated_at": datetime.now(timezone.utc)}}
         )
         survey["status"] = "published"
         
@@ -140,7 +140,7 @@ def close_survey(survey_id: str, user_id: str) -> dict:
     if survey["status"] != "closed":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
-            {"$set": {"status": "closed", "updated_at": datetime.utcnow()}}
+            {"$set": {"status": "closed", "updated_at": datetime.now(timezone.utc)}}
         )
         survey["status"] = "closed"
         
@@ -169,7 +169,7 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
             403,
         )
 
-    update_fields: Dict[str, Any] = {"updated_at": datetime.utcnow()}
+    update_fields: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
 
     if request.title is not None:
         update_fields["title"] = request.title
@@ -203,7 +203,7 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
         raise SurveyServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
     deadline = doc.get("deadline")
-    if deadline and deadline < datetime.utcnow():
+    if deadline and deadline < datetime.now(timezone.utc):
         raise SurveyServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     settings = doc.get("settings", {"allow_anonymous": True, "allow_multiple": False})

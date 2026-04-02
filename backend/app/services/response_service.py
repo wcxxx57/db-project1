@@ -1,6 +1,6 @@
 """答卷提交业务逻辑 —— 含跳转逻辑引擎 & 答案校验"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Union
 
 from bson import ObjectId
@@ -318,7 +318,7 @@ def submit_response(
         raise ResponseServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
     # 4. 验证截止时间
-    if survey.get("deadline") and survey["deadline"] < datetime.utcnow():
+    if survey.get("deadline") and survey["deadline"] < datetime.now(datetime.UTC):
         raise ResponseServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     # 5. 登录校验：必须登录才能填写
@@ -395,7 +395,7 @@ def submit_response(
             )
 
     # 12. 构建答卷文档并存储（始终保存 respondent_id）
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     response_doc = {
         "survey_id": ObjectId(survey_id),
         "respondent_id": ObjectId(respondent_id),

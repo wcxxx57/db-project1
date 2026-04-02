@@ -17,6 +17,6 @@ You are a senior full-stack engineer and an expert in MongoDB database. We are c
 6.Auto-Logging Requirement:This project requires the submission of detailed AI usage logs. After each time you complete a substantive coding task, bug fix, or architecture design assignment assigned to you, you must automatically open and modify the `ai_logs.md` file in the project root directory, **use Chinese**.Add the following fields (refer to the example in `Project Documentation.md` for recording):
 - prompt
 - What code was obtained (describe the core module you generated)
-- Were any modifications made/What modifications were made (document the process of adjustments and optimizations we carried out during the interaction)
+- Were any modifications made/What modifications were made by people based on AI's result
 
 6.Be concise.Skip explanations unless asked.Prefer code over prose.No preamble.No summary.

@@ -1,6 +1,6 @@
 """用户认证业务逻辑"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from pymongo.errors import DuplicateKeyError
@@ -35,7 +35,7 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
 	if existing_by_username is not None:
 		raise AuthServiceError(1001, "用户名已存在", 400)
 
-	now = datetime.utcnow()
+	now = datetime.now(timezone.utc)
 	user_doc = {
 		"username": username,
 		"password_hash": hash_password(password),
