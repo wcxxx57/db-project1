@@ -188,6 +188,65 @@ def _validate_question_validation(question: dict) -> Optional[str]:
     return None
 
 
+def _validate_jump_logic(questions: list) -> Optional[str]:
+    """验证跳转逻辑，检测无效目标和循环跳转"""
+    if not questions:
+        return None
+    
+    # 构建 question_id 集合和索引映射
+    qid_set = {q["question_id"] for q in questions}
+    qid_to_order = {q["question_id"]: q.get("order", 0) for q in questions}
+    
+    # 1. 验证跳转目标是否存在
+    for q in questions:
+        logic = q.get("logic")
+        if not logic or not logic.get("enabled"):
+            continue
+        
+        rules = logic.get("rules", [])
+        for rule in rules:
+            action = rule.get("action", {})
+            if action.get("type") == "jump_to":
+                target = action.get("target_question_id")
+                if target and target not in qid_set:
+                    return f"「{q.get('title', q['question_id'])}」的跳转目标「{target}」不存在"
+                
+                # 检查是否向前跳转
+                if target and qid_to_order.get(target, 0) <= qid_to_order.get(q["question_id"], 0):
+                    return f"「{q.get('title', q['question_id'])}」不允许向前跳转到「{target}」"
+    
+    # 2. 检测循环跳转（简化版：检测直接和间接循环）
+    def has_cycle(start_qid: str, visited: set) -> bool:
+        if start_qid in visited:
+            return True
+        visited.add(start_qid)
+        
+        # 找到该题目
+        q = next((q for q in questions if q["question_id"] == start_qid), None)
+        if not q:
+            return False
+        
+        logic = q.get("logic")
+        if not logic or not logic.get("enabled"):
+            return False
+        
+        # 检查所有可能的跳转目标
+        for rule in logic.get("rules", []):
+            action = rule.get("action", {})
+            if action.get("type") == "jump_to":
+                target = action.get("target_question_id")
+                if target and has_cycle(target, visited.copy()):
+                    return True
+        
+        return False
+    
+    for q in questions:
+        if has_cycle(q["question_id"], set()):
+            return f"检测到循环跳转，涉及题目「{q.get('title', q['question_id'])}」"
+    
+    return None
+
+
 def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     """更新问卷（draft 和 closed 状态允许编辑，published 不可编辑）"""
     db = get_db()
@@ -219,10 +278,20 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
             error = _validate_question_validation(q)
             if error:
                 raise SurveyServiceError(
-                    ErrorCodes.INVALID_PARAM,
+                    ErrorCodes.ANSWER_VALIDATION_FAILED,
                     f"题目验证规则错误：{error}",
                     400,
                 )
+        
+        # 验证跳转逻辑
+        error = _validate_jump_logic(questions_dict)
+        if error:
+            raise SurveyServiceError(
+                ErrorCodes.ANSWER_VALIDATION_FAILED,
+                f"跳转逻辑错误：{error}",
+                400,
+            )
+        
         update_fields["questions"] = questions_dict
 
     db.surveys.update_one(
