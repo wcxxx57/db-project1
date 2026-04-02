@@ -943,7 +943,13 @@
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
-  background: linear-gradient(160deg, #fff7e6, #fffdf4 40%, #edf5ff 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(251, 180, 138, 0.35) 0%,
+    rgba(251, 224, 143, 0.4) 35%,
+    rgba(247, 251, 199, 0.38) 55%,
+    rgba(131, 191, 254, 0.3) 100%
+  );
   animation: fadeIn 0.3s ease;
 }
 

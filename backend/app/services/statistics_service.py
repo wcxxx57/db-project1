@@ -86,6 +86,7 @@ def _build_question_statistic(
         option_counts: Dict[str, int] = {}
         option_respondents: Dict[str, List[Dict[str, Any]]] = {}
         option_respondent_seen: Dict[str, set] = {}
+        unknown_option_count = 0  # 记录未知选项的数量
 
         for opt in options:
             option_id = opt["option_id"]
@@ -110,11 +111,17 @@ def _build_question_statistic(
                 if answer in option_counts:
                     option_counts[answer] += 1
                     _append_respondent(answer, entry)
+                else:
+                    # 历史答卷中的选项在当前题目定义中已不存在
+                    unknown_option_count += 1
             elif q_type == "multiple_choice" and isinstance(answer, list):
                 for opt_id in answer:
                     if opt_id in option_counts:
                         option_counts[opt_id] += 1
                         _append_respondent(opt_id, entry)
+                    else:
+                        # 历史答卷中的选项在当前题目定义中已不存在
+                        unknown_option_count += 1
 
         option_statistics = []
         for opt in options:
@@ -130,6 +137,10 @@ def _build_question_statistic(
             })
 
         result["option_statistics"] = option_statistics
+        
+        # 如果有未知选项，添加警告信息
+        if unknown_option_count > 0:
+            result["warning"] = f"有 {unknown_option_count} 个答案的选项在当前题目定义中已不存在（可能是历史数据）"
 
     # ---- 文本填空 ----
     elif q_type == "text_input":

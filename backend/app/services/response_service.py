@@ -318,7 +318,8 @@ def submit_response(
         raise ResponseServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
     # 4. 验证截止时间
-    if survey.get("deadline") and survey["deadline"] < datetime.now(datetime.UTC):
+    deadline = survey.get("deadline")
+    if deadline and deadline.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise ResponseServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     # 5. 登录校验：必须登录才能填写

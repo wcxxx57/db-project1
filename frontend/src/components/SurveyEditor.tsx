@@ -20,22 +20,16 @@ function makeId(prefix: string, index: number) {
 
 function formatDateTimeLocal(isoString?: string): string {
   if (!isoString) return "";
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  // 直接截取前 16 位 (YYYY-MM-DDTHH:MM)，不做时区转换
+  // 这样可以保持用户输入的本地时间
+  return isoString.substring(0, 16);
 }
 
 function toIsoFromLocalDateTime(localDateTime?: string): string | undefined {
   if (!localDateTime) return undefined;
-  const date = new Date(localDateTime);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return date.toISOString();
+  // 不做时区转换，直接补充秒数返回
+  // 保持用户输入的本地时间（问卷截止时间通常是本地时间概念）
+  return localDateTime + ":00";
 }
 
 export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
@@ -50,6 +44,50 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  // 验证题目的 validation 规则
+  const validateQuestion = useCallback((q: Question): string | null => {
+    if (!q.validation) return null;
+    
+    const v = q.validation;
+    
+    // 多选题验证
+    if (q.type === "multiple_choice") {
+      if (v.min_selected !== undefined && v.max_selected !== undefined && v.max_selected < v.min_selected) {
+        return `「${q.title}」最多选择项(${v.max_selected})不能小于最少选择项(${v.min_selected})`;
+      }
+    }
+    
+    // 文本填空验证
+    if (q.type === "text_input") {
+      if (v.min_length !== undefined && v.max_length !== undefined && v.max_length < v.min_length) {
+        return `「${q.title}」最多字数(${v.max_length})不能小于最少字数(${v.min_length})`;
+      }
+    }
+    
+    // 数字填空验证
+    if (q.type === "number_input") {
+      if (v.min_value !== undefined && v.max_value !== undefined && v.max_value < v.min_value) {
+        return `「${q.title}」最大值(${v.max_value})不能小于最小值(${v.min_value})`;
+      }
+    }
+    
+    return null;
+  }, []);
+
+  // 验证所有题目
+  const validateAllQuestions = useCallback(() => {
+    const errors: Record<string, string> = {};
+    questions.forEach((q) => {
+      const error = validateQuestion(q);
+      if (error) {
+        errors[q.question_id] = error;
+      }
+    });
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [questions, validateQuestion]);
 
   // 加载问卷
   useEffect(() => {
@@ -73,6 +111,12 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
 
   // 保存
   const handleSave = useCallback(async () => {
+    // 先验证
+    if (!validateAllQuestions()) {
+      setMessage("❌ 保存失败：存在验证错误，请检查题目设置");
+      return;
+    }
+    
     setSaving(true);
     setMessage(null);
     try {
@@ -89,7 +133,7 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
     } finally {
       setSaving(false);
     }
-  }, [surveyId, title, description, allowAnonymous, allowMultiple, deadline, questions]);
+  }, [surveyId, title, description, allowAnonymous, allowMultiple, deadline, questions, validateAllQuestions]);
 
   // 添加题目
   const addQuestion = useCallback(
@@ -152,8 +196,25 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
       setQuestions((prev) =>
         prev.map((q) => (q.question_id === qid ? { ...q, ...patch } : q)),
       );
+      // 实时验证
+      setTimeout(() => {
+        const updatedQ = questions.find(q => q.question_id === qid);
+        if (updatedQ) {
+          const merged = { ...updatedQ, ...patch };
+          const error = validateQuestion(merged);
+          setValidationErrors(prev => {
+            const next = { ...prev };
+            if (error) {
+              next[qid] = error;
+            } else {
+              delete next[qid];
+            }
+            return next;
+          });
+        }
+      }, 0);
     },
-    [],
+    [questions, validateQuestion],
   );
 
   // 选项操作
@@ -164,7 +225,7 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
           if (q.question_id !== qid) return q;
           const opts = q.options || [];
           const newOpt: QuestionOption = {
-            option_id: `opt${opts.length + 1}`,
+            option_id: `opt_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
             text: `选项${opts.length + 1}`,
           };
           return { ...q, options: [...opts, newOpt] };
@@ -317,6 +378,36 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
             }}
           >
             <span>{message}</span>
+          </div>
+        )}
+
+        {/* 警告横幅 - 当问卷已有答卷数据时显示 */}
+        {survey && survey.response_count > 0 && (
+          <div
+            className="error-box"
+            style={{
+              background: "#fef2f2",
+              color: "#991b1b",
+              borderLeftColor: "#dc2626",
+              borderLeftWidth: "4px",
+              marginBottom: "1.5rem",
+            }}
+          >
+            <div style={{ fontWeight: "600", marginBottom: "0.5rem" }}>
+              ⚠️ 注意：该问卷已有 {survey.response_count} 份答卷数据
+            </div>
+            <div style={{ fontSize: "0.9rem", lineHeight: "1.6" }}>
+              <p style={{ marginBottom: "0.5rem" }}>修改题目结构（删除题目、修改选项等）可能导致：</p>
+              <ul style={{ marginLeft: "1.5rem", marginBottom: "0.75rem" }}>
+                <li>历史答卷数据无法正确统计</li>
+                <li>统计结果出现数据缺失或警告信息</li>
+              </ul>
+              <p style={{ fontWeight: "600", marginBottom: "0.5rem" }}>建议：</p>
+              <ul style={{ marginLeft: "1.5rem" }}>
+                <li>如只是修正错别字或调整说明，可以继续编辑</li>
+                <li>如需大幅修改题目结构，请创建新问卷</li>
+              </ul>
+            </div>
           </div>
         )}
 
@@ -525,6 +616,11 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                             />
                           </label>
                         </div>
+                        {validationErrors[q.question_id] && (
+                          <div style={{ color: "#dc2626", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+                            ⚠️ {validationErrors[q.question_id]}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -535,6 +631,11 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                           <label>最少 <input type="number" className="small-input" value={q.validation?.min_length ?? ""} onChange={(e) => updateQuestion(q.question_id, { validation: { ...q.validation, min_length: e.target.value ? Number(e.target.value) : undefined } })} /></label>
                           <label>最多 <input type="number" className="small-input" value={q.validation?.max_length ?? ""} onChange={(e) => updateQuestion(q.question_id, { validation: { ...q.validation, max_length: e.target.value ? Number(e.target.value) : undefined } })} /></label>
                         </div>
+                        {validationErrors[q.question_id] && (
+                          <div style={{ color: "#dc2626", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+                            ⚠️ {validationErrors[q.question_id]}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -549,6 +650,11 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                             必须整数
                           </label>
                         </div>
+                        {validationErrors[q.question_id] && (
+                          <div style={{ color: "#dc2626", fontSize: "0.875rem", marginTop: "0.5rem" }}>
+                            ⚠️ {validationErrors[q.question_id]}
+                          </div>
+                        )}
                       </div>
                     )}
 

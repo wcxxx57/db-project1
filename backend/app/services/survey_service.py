@@ -155,6 +155,39 @@ def delete_survey(survey_id: str, user_id: str) -> None:
     db.surveys.delete_one({"_id": ObjectId(survey_id)})
 
 
+def _validate_question_validation(question: dict) -> Optional[str]:
+    """验证题目的 validation 规则，返回错误信息或 None"""
+    validation = question.get("validation")
+    if not validation:
+        return None
+    
+    q_type = question.get("type")
+    q_title = question.get("title", "未命名题目")
+    
+    # 多选题验证
+    if q_type == "multiple_choice":
+        min_sel = validation.get("min_selected")
+        max_sel = validation.get("max_selected")
+        if min_sel is not None and max_sel is not None and max_sel < min_sel:
+            return f"「{q_title}」最多选择项({max_sel})不能小于最少选择项({min_sel})"
+    
+    # 文本填空验证
+    if q_type == "text_input":
+        min_len = validation.get("min_length")
+        max_len = validation.get("max_length")
+        if min_len is not None and max_len is not None and max_len < min_len:
+            return f"「{q_title}」最多字数({max_len})不能小于最少字数({min_len})"
+    
+    # 数字填空验证
+    if q_type == "number_input":
+        min_val = validation.get("min_value")
+        max_val = validation.get("max_value")
+        if min_val is not None and max_val is not None and max_val < min_val:
+            return f"「{q_title}」最大值({max_val})不能小于最小值({min_val})"
+    
+    return None
+
+
 def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     """更新问卷（draft 和 closed 状态允许编辑，published 不可编辑）"""
     db = get_db()
@@ -180,8 +213,17 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     if request.deadline is not None:
         update_fields["deadline"] = request.deadline
     if request.questions is not None:
-        # 将 Pydantic 模型列表转为字典列表存入 MongoDB
-        update_fields["questions"] = [q.model_dump() for q in request.questions]
+        # 验证题目的 validation 规则
+        questions_dict = [q.model_dump() for q in request.questions]
+        for q in questions_dict:
+            error = _validate_question_validation(q)
+            if error:
+                raise SurveyServiceError(
+                    ErrorCodes.INVALID_PARAM,
+                    f"题目验证规则错误：{error}",
+                    400,
+                )
+        update_fields["questions"] = questions_dict
 
     db.surveys.update_one(
         {"_id": ObjectId(survey_id)},
@@ -203,7 +245,7 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
         raise SurveyServiceError(ErrorCodes.SURVEY_CLOSED, "问卷未发布或已关闭", 400)
 
     deadline = doc.get("deadline")
-    if deadline and deadline < datetime.now(timezone.utc):
+    if deadline and deadline.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise SurveyServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
     settings = doc.get("settings", {"allow_anonymous": True, "allow_multiple": False})
