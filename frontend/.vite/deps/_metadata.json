@@ -1,29 +1,29 @@
 {
-  "hash": "e1e661d3",
-  "browserHash": "69155a42",
+  "hash": "fdc9835d",
+  "browserHash": "17ecb5d2",
   "optimized": {
     "axios": {
       "src": "../../node_modules/axios/index.js",
       "file": "axios.js",
-      "fileHash": "69a76627",
+      "fileHash": "5dd5839a",
       "needsInterop": false
     },
     "react": {
       "src": "../../node_modules/react/index.js",
       "file": "react.js",
-      "fileHash": "1a48ac5c",
+      "fileHash": "13f3be6a",
       "needsInterop": true
     },
     "react-dom/client": {
       "src": "../../node_modules/react-dom/client.js",
       "file": "react-dom_client.js",
-      "fileHash": "d384f908",
+      "fileHash": "ec6a94cc",
       "needsInterop": true
     },
     "react/jsx-dev-runtime": {
       "src": "../../node_modules/react/jsx-dev-runtime.js",
       "file": "react_jsx-dev-runtime.js",
-      "fileHash": "1fed9aff",
+      "fileHash": "dd6b0733",
       "needsInterop": true
     },
     "react-router-dom": {

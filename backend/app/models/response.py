@@ -23,6 +23,7 @@ class ResponseSubmitRequest(BaseModel):
     survey_id: str = Field(..., description="问卷 ID")
     access_code: str = Field(..., description="问卷访问码")
     answers: List[Answer] = Field(..., description="答案列表")
+    is_anonymous: Optional[bool] = Field(None, description="是否匿名提交（需问卷允许匿名）")
     completion_time: Optional[int] = Field(None, description="完成问卷所用秒数")
 
 
@@ -69,13 +70,13 @@ class QuestionStatistic(BaseModel):
     option_statistics: Optional[List[OptionStatistic]] = Field(None, description="选项统计（选择题）")
 
     # 填空题统计
-    text_answers: Optional[List[str]] = Field(None, description="所有文本答案（文本填空）")
+    text_responses: Optional[List[str]] = Field(None, description="所有文本答案（文本填空）")
 
     # 数字填空统计
-    number_answers: Optional[List[float]] = Field(None, description="所有数字答案（数字填空）")
-    average: Optional[float] = Field(None, description="平均值（数字填空）")
-    min_val: Optional[float] = Field(None, description="最小值（数字填空）")
-    max_val: Optional[float] = Field(None, description="最大值（数字填空）")
+    number_statistics: Optional[dict] = Field(
+        None,
+        description="数字统计（数字填空），包含 average/min/max/values",
+    )
 
 
 class SurveyStatistics(BaseModel):

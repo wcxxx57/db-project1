@@ -58,11 +58,11 @@ export default function Dashboard() {
   const handleCreate = async () => {
     setIsCreating(true);
     try {
-      const newSurvey = await createSurvey({
+      await createSurvey({
         title: "未命名问卷",
         description: "点击编辑以修改详细内容",
       });
-      setSurveys([newSurvey, ...surveys]);
+      fetchSurveys();
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -103,7 +103,7 @@ export default function Dashboard() {
 
   const handleCopyLink = (accessCode: string | null) => {
     if (!accessCode) return;
-    const url = window.location.origin + "/fill/" + accessCode;
+    const url = window.location.origin + "/s/" + accessCode;
     navigator.clipboard
       .writeText(url)
       .then(() => {

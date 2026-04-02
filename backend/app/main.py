@@ -45,8 +45,8 @@ app.add_middleware(
 # 挂载路由模块
 app.include_router(auth.router, prefix="/auth", tags=["用户认证"])
 app.include_router(surveys.router, prefix="/surveys", tags=["问卷管理"])
-# app.include_router(responses.router, prefix="/api/responses", tags=["答卷提交"])
-# app.include_router(statistics.router, prefix="/api/statistics", tags=["统计数据"])
+app.include_router(responses.router, tags=["答卷提交"])
+app.include_router(statistics.router, tags=["统计数据"])
 
 
 @app.exception_handler(RequestValidationError)

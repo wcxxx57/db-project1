@@ -5,9 +5,16 @@ import type {
   LoginResponse,
   RegisterRequest,
   UserInfo,
+  SurveyListResponse,
   Survey,
-  GetSurveysResponse,
   CreateSurveyRequest,
+  UpdateSurveyRequest,
+  PublicSurvey,
+  SubmitResponseRequest,
+  SubmitResponseResult,
+  ResponseListItem,
+  SurveyStatistics,
+  QuestionStatistic,
 } from "../types";
 
 export const AUTH_TOKEN_KEY = "survey_auth_token";
@@ -18,6 +25,15 @@ const ERROR_MESSAGE_MAP: Record<number, string> = {
   1002: "用户名或密码错误，请检查后重试",
   1004: "未发现该用户，请先注册后再登录",
   1003: "登录状态已失效，请重新登录",
+  2001: "问卷不存在",
+  2002: "无权限操作该问卷",
+  2003: "问卷已关闭",
+  2004: "问卷已过期",
+  2005: "访问码无效",
+  3001: "答案校验失败",
+  3002: "您已经提交过该问卷，不允许重复提交",
+  3003: "必填题未回答",
+  3004: "请先登录后再填写问卷",
 };
 
 class ApiBusinessError extends Error {
@@ -73,6 +89,8 @@ function normalizeError(error: unknown): Error {
   return new Error("未知错误，请稍后重试");
 }
 
+// ============ 认证 ============
+
 export async function register(payload: RegisterRequest): Promise<UserInfo> {
   try {
     const response = await apiClient.post<ApiResponse<UserInfo>>(
@@ -97,33 +115,40 @@ export async function login(payload: LoginRequest): Promise<LoginResponse> {
   }
 }
 
-// Survey APIs
-export async function getMySurveys(
-  page: number = 1,
-  page_size: number = 10,
-): Promise<GetSurveysResponse> {
+// ============ 问卷管理 ============
+
+export async function createSurvey(
+  payload: CreateSurveyRequest,
+): Promise<{ survey_id: string; status: string; access_code: string; created_at: string }> {
   try {
-    const response = await apiClient.get<ApiResponse<GetSurveysResponse>>(
-      "/surveys/my",
-      {
-        params: { page, page_size },
-      },
-    );
-    return parseApiResponse(response.data);
+    const resp = await apiClient.post<ApiResponse<any>>("/surveys", payload);
+    return parseApiResponse(resp.data);
   } catch (error) {
     throw normalizeError(error);
   }
 }
 
-export async function createSurvey(
-  payload: CreateSurveyRequest,
-): Promise<Survey> {
+export async function getMySurveys(
+  page = 1,
+  pageSize = 20,
+): Promise<SurveyListResponse> {
   try {
-    const response = await apiClient.post<ApiResponse<Survey>>(
-      "/surveys",
-      payload,
+    const resp = await apiClient.get<ApiResponse<SurveyListResponse>>(
+      "/surveys/my",
+      { params: { page, page_size: pageSize } },
     );
-    return parseApiResponse(response.data);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getSurveyDetail(surveyId: string): Promise<Survey> {
+  try {
+    const resp = await apiClient.get<ApiResponse<Survey>>(
+      `/surveys/${surveyId}`,
+    );
+    return parseApiResponse(resp.data);
   } catch (error) {
     throw normalizeError(error);
   }
@@ -153,10 +178,100 @@ export async function closeSurvey(surveyId: string): Promise<Survey> {
 
 export async function deleteSurvey(surveyId: string): Promise<void> {
   try {
-    const response = await apiClient.delete<ApiResponse<null>>(
+    const resp = await apiClient.delete<ApiResponse<null>>(
       `/surveys/${surveyId}`,
     );
-    parseApiResponse(response.data);
+    parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function updateSurvey(
+  surveyId: string,
+  payload: UpdateSurveyRequest,
+): Promise<Survey> {
+  try {
+    const resp = await apiClient.put<ApiResponse<Survey>>(
+      `/surveys/${surveyId}`,
+      payload,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// ============ 公开问卷（填写端） ============
+
+export async function getPublicSurvey(
+  accessCode: string,
+): Promise<PublicSurvey> {
+  try {
+    const resp = await apiClient.get<ApiResponse<PublicSurvey>>(
+      `/public/surveys/${accessCode}`,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// ============ 提交答卷 ============
+
+export async function submitResponse(
+  payload: SubmitResponseRequest,
+): Promise<SubmitResponseResult> {
+  try {
+    const resp = await apiClient.post<ApiResponse<SubmitResponseResult>>(
+      "/responses",
+      payload,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// ============ 统计 ============
+
+export async function getSurveyStatistics(
+  surveyId: string,
+): Promise<SurveyStatistics> {
+  try {
+    const resp = await apiClient.get<ApiResponse<SurveyStatistics>>(
+      `/surveys/${surveyId}/statistics`,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getQuestionStatistics(
+  surveyId: string,
+  questionId: string,
+): Promise<QuestionStatistic> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionStatistic>>(
+      `/surveys/${surveyId}/questions/${questionId}/statistics`,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// ============ 答卷列表 ============
+
+export async function getResponseList(
+  surveyId: string,
+): Promise<ResponseListItem[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<ResponseListItem[]>>(
+      `/surveys/${surveyId}/responses`,
+    );
+    return parseApiResponse(resp.data);
   } catch (error) {
     throw normalizeError(error);
   }

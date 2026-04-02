@@ -6,11 +6,12 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 
 from app.middlewares.auth import get_current_user
-from app.models.survey import SurveyCreateRequest, SurveyResponse, SurveyListItem
+from app.models.survey import SurveyCreateRequest, SurveyUpdateRequest, SurveyResponse, SurveyListItem
 from app.services.survey_service import (
     create_survey,
-    get_user_surveys,
-    get_survey,
+    update_survey,
+    get_my_surveys,
+    get_survey_detail,
     publish_survey,
     close_survey,
     delete_survey,
@@ -49,7 +50,7 @@ def api_get_my_surveys(
 ):
     try:
         user_id = current_user["user_id"]
-        surveys_data = get_user_surveys(user_id=user_id, page=page, page_size=page_size)
+        surveys_data = get_my_surveys(user_id=user_id, page=page, page_size=page_size)
         return JSONResponse(
             status_code=200,
             content=jsonable_encoder(success_response(data=surveys_data)),
@@ -68,7 +69,28 @@ def api_get_survey(
 ):
     try:
         user_id = current_user["user_id"]
-        survey_data = get_survey(survey_id=survey_id, user_id=user_id)
+        survey_data = get_survey_detail(survey_id=survey_id, user_id=user_id)
+        return JSONResponse(
+            status_code=200,
+            content=jsonable_encoder(success_response(data=survey_data)),
+        )
+    except SurveyServiceError as exc:
+        return JSONResponse(
+            status_code=exc.http_status,
+            content=error_response(code=exc.business_code, message=exc.message),
+        )
+
+
+@router.put("/{survey_id}")
+def api_update_survey(
+    payload: SurveyUpdateRequest,
+    survey_id: str = Path(..., description="问卷ID"),
+    current_user: dict = Depends(get_current_user),
+):
+    """更新问卷（draft 和 closed 状态可编辑，published 不可编辑）"""
+    try:
+        user_id = current_user["user_id"]
+        survey_data = update_survey(survey_id=survey_id, user_id=user_id, request=payload)
         return JSONResponse(
             status_code=200,
             content=jsonable_encoder(success_response(data=survey_data)),

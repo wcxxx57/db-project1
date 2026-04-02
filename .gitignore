@@ -23,4 +23,5 @@ pnpm-debug.log*
 .vscode/
 .idea/
 
-# Note: .env and .env.example are intentionally NOT ignored for this private repo
+.vite/
+.claude/
