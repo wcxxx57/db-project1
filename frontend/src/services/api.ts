@@ -5,6 +5,9 @@ import type {
   LoginResponse,
   RegisterRequest,
   UserInfo,
+  Survey,
+  GetSurveysResponse,
+  CreateSurveyRequest,
 } from "../types";
 
 export const AUTH_TOKEN_KEY = "survey_auth_token";
@@ -89,6 +92,71 @@ export async function login(payload: LoginRequest): Promise<LoginResponse> {
       payload,
     );
     return parseApiResponse(response.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// Survey APIs
+export async function getMySurveys(
+  page: number = 1,
+  page_size: number = 10,
+): Promise<GetSurveysResponse> {
+  try {
+    const response = await apiClient.get<ApiResponse<GetSurveysResponse>>(
+      "/surveys/my",
+      {
+        params: { page, page_size },
+      },
+    );
+    return parseApiResponse(response.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function createSurvey(
+  payload: CreateSurveyRequest,
+): Promise<Survey> {
+  try {
+    const response = await apiClient.post<ApiResponse<Survey>>(
+      "/surveys",
+      payload,
+    );
+    return parseApiResponse(response.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function publishSurvey(surveyId: string): Promise<Survey> {
+  try {
+    const response = await apiClient.post<ApiResponse<Survey>>(
+      `/surveys/${surveyId}/publish`,
+    );
+    return parseApiResponse(response.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function closeSurvey(surveyId: string): Promise<Survey> {
+  try {
+    const response = await apiClient.post<ApiResponse<Survey>>(
+      `/surveys/${surveyId}/close`,
+    );
+    return parseApiResponse(response.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function deleteSurvey(surveyId: string): Promise<void> {
+  try {
+    const response = await apiClient.delete<ApiResponse<null>>(
+      `/surveys/${surveyId}`,
+    );
+    parseApiResponse(response.data);
   } catch (error) {
     throw normalizeError(error);
   }

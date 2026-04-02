@@ -25,3 +25,27 @@ export interface LoginResponse {
   token_type: "bearer";
   user: UserInfo;
 }
+
+export interface Survey {
+  survey_id: string;
+  title: string;
+  description: string;
+  status: "draft" | "published" | "closed";
+  access_code: string | null;
+  response_count: number;
+  created_at: string;
+  deadline: string | null;
+  is_anonymous: boolean;
+}
+
+export interface GetSurveysResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  surveys: Survey[];
+}
+
+export interface CreateSurveyRequest {
+  title: string;
+  description?: string;
+}

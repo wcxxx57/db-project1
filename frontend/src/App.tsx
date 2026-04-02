@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AuthModal from "./components/AuthModal";
+import Dashboard from "./pages/Dashboard";
 import { AUTH_TOKEN_KEY, AUTH_USER_KEY } from "./services/api";
 import type { LoginResponse, UserInfo } from "./types";
 import "./App.css";
@@ -31,27 +33,17 @@ export default function App() {
     setUser(payload.user);
   };
 
-  const logout = () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USER_KEY);
-    setToken(null);
-    setUser(null);
-  };
-
   if (!isLoggedIn) {
     return <AuthModal onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <main className="dashboard-shell">
-      <section className="dashboard-card">
-        <h2>登录成功</h2>
-        <p>当前用户：{user?.username}</p>
-        <p>后续将从这里接入问卷创建、填写与统计模块。</p>
-        <button className="logout-btn" onClick={logout}>
-          退出登录
-        </button>
-      </section>
-    </main>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/dashboard" element={<Dashboard />} />
+        {/* Redirect root to dashboard */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

@@ -1,7 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #2c1608;
-  background-color: #fffdf4;
+  /* 严格应用指定的配色体系 */
+  --bg-canvas: #fffdf4;
+  --text-primary: #2c1608;
+  --text-heading: #be8944;
+
+  --blue: #0066cc;
+  --blue-light: #8cc0f8;
+  --blue-lighter: #c8e2ff;
+  --blue-mist: #e7f4ff;
+
+  --yellow: #ffe083;
+  --yellow-light: #ffecb3;
+  --yellow-lighter: #fff6db;
+  --yellow-mist: #fffbed;
+
+  --orange: #fcac7d;
+  --orange-light: #fdbc97;
+  --orange-lighter: #fbd9c4;
+  --orange-mist: #f9ebe4;
+
+  --chat-orange-surface: #fbd9c4;
+  --chat-orange-accent: #ffcdad;
+  --chat-yellow-surface: #ffecb3;
+  --chat-yellow-accent: #fee48d;
+
+  --purple: #a58bc2;
+  --purple-light: #d1c1e0;
+  --purple-lighter: #eaddf5;
+  --purple-mist: #f6f2fa;
+
+  --green: #5eb69d;
+  --green-light: #9fd8c8;
+  --green-lighter: #d1eee5;
+  --green-mist: #eaf8f3;
+
+  --brown-gold: #be8944;
+  --brown-light: #c4a882;
+  --brown-medium: #8b6347;
+  --brown-dark: #5c3d2e;
+  --brown-deep: #271307;
+
+  --warn-bg: #fbddd6;
+  --warn-text: #c84a2b;
+  --success-bg: #effce3;
+  --success-text: #478211;
+
+  --shadow-soft:
+    6px 6px 12px rgba(228, 200, 166, 0.3),
+    -6px -6px 12px rgba(255, 255, 255, 0.8);
+  --shadow-hover:
+    8px 8px 16px rgba(228, 200, 166, 0.4),
+    -8px -8px 16px rgba(255, 255, 255, 0.9);
+  --shadow-inner:
+    inset 4px 4px 8px rgba(228, 200, 166, 0.3),
+    inset -4px -4px 8px rgba(255, 255, 255, 0.8);
 }
 
 * {
@@ -12,7 +68,239 @@ html,
 body,
 #root {
   width: 100%;
-  min-height: 100%;
+  min-height: 100vh;
   margin: 0;
   padding: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text-primary);
+  background-color: var(--bg-canvas);
+}
+
+/* 统一拟态风格的滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e4c8a6;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c4a882;
+}
+/* --- Dashboard Neumorphic Animations & Utils --- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes float1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-20px, 15px) scale(1.05);
+  }
+}
+@keyframes float2 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(15px, -20px) rotate(5deg);
+  }
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+.blob-orange {
+  width: 450px;
+  height: 450px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(253, 188, 151, 0.4) 0%,
+    rgba(252, 172, 125, 0.1) 60%,
+    transparent 80%
+  );
+  top: -120px;
+  right: -80px;
+  animation: float1 8s ease-in-out infinite;
+}
+.blob-blue {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(
+    circle at 70% 70%,
+    rgba(140, 192, 248, 0.3) 0%,
+    rgba(0, 102, 204, 0.05) 60%,
+    transparent 80%
+  );
+  bottom: -100px;
+  left: -60px;
+  animation: float2 10s ease-in-out infinite;
+}
+
+/* Glassmorphism Survey Card - Enhanced */
+.survey-card {
+  border-radius: 24px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.88))
+      padding-box,
+    linear-gradient(135deg, var(--yellow), var(--orange)) border-box;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow:
+    6px 6px 16px rgba(228, 200, 166, 0.25),
+    -6px -6px 16px rgba(255, 255, 255, 0.8),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  border: 2px solid transparent;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+.survey-card:hover {
+  box-shadow:
+    8px 8px 20px rgba(228, 200, 166, 0.35),
+    -8px -8px 20px rgba(255, 255, 255, 0.9),
+    inset 0 1px 3px rgba(255, 255, 255, 0.4);
+  transform: translateY(-3px);
+}
+
+/* Main Create Button - Enhanced */
+.main-create-btn {
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--yellow), var(--orange));
+  box-shadow:
+    6px 6px 16px rgba(228, 200, 166, 0.3),
+    -6px -6px 16px rgba(255, 255, 255, 0.8),
+    0 4px 20px rgba(252, 172, 125, 0.4);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+}
+.main-create-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fdbc97, #fcac7d);
+  box-shadow:
+    8px 8px 20px rgba(228, 200, 166, 0.4),
+    -8px -8px 20px rgba(255, 255, 255, 0.9),
+    0 6px 28px rgba(252, 172, 125, 0.5);
+  transform: translateY(-3px);
+}
+.main-create-btn:active:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 4px 4px 8px rgba(228, 200, 166, 0.3),
+    inset -4px -4px 8px rgba(255, 255, 255, 0.8),
+    0 2px 8px rgba(252, 172, 125, 0.25);
+}
+.main-create-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Action Chip/Button - Base */
+.action-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    4px 4px 10px rgba(228, 200, 166, 0.2),
+    -4px -4px 10px rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--brown-medium);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.action-chip:hover {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow:
+    6px 6px 14px rgba(228, 200, 166, 0.3),
+    -6px -6px 14px rgba(255, 255, 255, 0.85);
+  transform: translateY(-2px);
+  color: var(--brown-dark);
+}
+.action-chip:active {
+  box-shadow:
+    inset 3px 3px 6px rgba(228, 200, 166, 0.2),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.7);
+  transform: translateY(0);
+}
+
+/* Action Chip Color Variants */
+.action-chip-blue {
+  color: var(--blue);
+}
+.action-chip-blue:hover {
+  background: var(--blue-mist);
+  color: var(--blue);
+}
+.action-chip-blue:active {
+  background: var(--blue-lighter);
+  color: var(--blue);
+}
+
+.action-chip-green {
+  color: var(--green);
+}
+.action-chip-green:hover {
+  background: var(--green-mist);
+  color: var(--green);
+}
+.action-chip-green:active {
+  background: var(--green-lighter);
+  color: var(--green);
+}
+
+.action-chip-purple {
+  color: var(--purple);
+}
+.action-chip-purple:hover {
+  background: var(--purple-mist);
+  color: var(--purple);
+}
+.action-chip-purple:active {
+  background: var(--purple-lighter);
+  color: var(--purple);
+}
+
+.action-chip-red {
+  color: var(--warn-text);
+}
+.action-chip-red:hover {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.action-chip-red:active {
+  background: #fab6a3;
+  color: var(--warn-text);
+}
+
+.action-chip-orange {
+  color: #d98544;
+}
+.action-chip-orange:hover {
+  background: #f9ebe4;
+  color: #d98544;
+}
+.action-chip-orange:active {
+  background: #fbd9c4;
+  color: #d98544;
 }
