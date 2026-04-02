@@ -112,7 +112,7 @@ def test_get_public_survey_should_block_expired_survey(api_client):
 		"/surveys",
 		json={
 			"title": "已过期问卷",
-			"deadline": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+			"deadline": (datetime.now() - timedelta(days=1)).isoformat(),
 			"settings": {"allow_anonymous": True, "allow_multiple": False},
 		},
 	)

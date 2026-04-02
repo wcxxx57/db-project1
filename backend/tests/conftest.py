@@ -138,7 +138,7 @@ class TestContext:
                 "_id": user_id,
                 "username": username,
                 "password_hash": "hash",
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(),
             }
         )
         return str(user_id)
@@ -154,7 +154,7 @@ def api_client(monkeypatch: pytest.MonkeyPatch):
             "_id": creator_id,
             "username": "creator",
             "password_hash": "hash",
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(),
         }
     )
 

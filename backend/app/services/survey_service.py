@@ -58,7 +58,7 @@ def _serialize_survey_list_item(doc: Dict[str, Any]) -> Dict[str, Any]:
 def create_survey(user_id: str, request: SurveyCreateRequest) -> Dict[str, Any]:
     """创建问卷"""
     db = get_db()
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     access_code = _generate_access_code()
 
     settings = request.settings.model_dump() if request.settings else {"allow_anonymous": True, "allow_multiple": False}
@@ -126,7 +126,7 @@ def publish_survey(survey_id: str, user_id: str) -> dict:
     if survey["status"] != "published":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
-            {"$set": {"status": "published", "updated_at": datetime.now(timezone.utc)}}
+            {"$set": {"status": "published", "updated_at": datetime.now()}}
         )
         survey["status"] = "published"
         
@@ -140,7 +140,7 @@ def close_survey(survey_id: str, user_id: str) -> dict:
     if survey["status"] != "closed":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
-            {"$set": {"status": "closed", "updated_at": datetime.now(timezone.utc)}}
+            {"$set": {"status": "closed", "updated_at": datetime.now()}}
         )
         survey["status"] = "closed"
         
@@ -202,7 +202,7 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
             403,
         )
 
-    update_fields: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+    update_fields: Dict[str, Any] = {"updated_at": datetime.now()}
 
     if request.title is not None:
         update_fields["title"] = request.title

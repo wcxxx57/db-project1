@@ -35,7 +35,7 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
 	if existing_by_username is not None:
 		raise AuthServiceError(1001, "用户名已存在", 400)
 
-	now = datetime.now(timezone.utc)
+	now = datetime.now()
 	user_doc = {
 		"username": username,
 		"password_hash": hash_password(password),

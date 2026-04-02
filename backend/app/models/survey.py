@@ -154,8 +154,8 @@ class SurveyInDB(BaseModel):
     creator_id: str
     access_code: str
     status: str = "draft"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
     deadline: Optional[datetime] = None
     response_count: int = 0
     settings: dict = Field(default_factory=lambda: {"allow_anonymous": True, "allow_multiple": False})

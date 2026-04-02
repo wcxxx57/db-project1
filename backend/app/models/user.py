@@ -40,4 +40,4 @@ class UserInDB(BaseModel):
     """数据库中的用户文档结构"""
     username: str
     password_hash: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)
