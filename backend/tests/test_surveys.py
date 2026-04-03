@@ -124,8 +124,6 @@ def test_get_public_survey_should_block_expired_survey(api_client):
 	public_resp = client.get(f"/public/surveys/{access_code}")
 	assert public_resp.status_code == 400
 	assert public_resp.json()["code"] == 2004
-<<<<<<< HEAD
-=======
 
 
 def test_close_survey_success(api_client):
@@ -160,5 +158,3 @@ def test_delete_survey_success(api_client):
 
 	get_resp = client.get(f"/surveys/{survey_id}")
 	assert get_resp.status_code == 404
-
->>>>>>> 200a9100c2df0b5efad61e9b1e5fe3c197b33f36
