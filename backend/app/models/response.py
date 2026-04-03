@@ -95,7 +95,5 @@ class ResponseInDB(BaseModel):
     respondent_id: Optional[str] = None
     is_anonymous: bool = True
     submitted_at: datetime = Field(default_factory=datetime.now)
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
     answers: list = Field(default_factory=list)
     completion_time: Optional[int] = None

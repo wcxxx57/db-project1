@@ -289,8 +289,6 @@ def submit_response(
     answers: List[Dict[str, Any]],
     respondent_id: Optional[str] = None,
     is_anonymous_choice: Optional[bool] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
     completion_time: Optional[int] = None,
 ) -> Dict[str, Any]:
     """提交答卷
@@ -300,8 +298,6 @@ def submit_response(
         access_code: 访问码
         answers: 答案列表 [{"question_id": "q1", "answer": ...}, ...]
         respondent_id: 答题者用户ID（匿名时为 None）
-        ip_address: IP地址
-        user_agent: 浏览器UA
         completion_time: 完成用时（秒）
 
     Returns:
@@ -411,8 +407,6 @@ def submit_response(
         "respondent_id": ObjectId(respondent_id),
         "is_anonymous": is_anonymous,
         "submitted_at": now,
-        "ip_address": ip_address,
-        "user_agent": user_agent,
         "answers": [
             {"question_id": a["question_id"], "answer": a["answer"]}
             for a in answers

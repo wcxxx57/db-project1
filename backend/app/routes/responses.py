@@ -57,18 +57,12 @@ def api_submit_response(
 ):
     """提交答卷（必须登录）"""
     try:
-        # 获取客户端信息
-        ip_address = request.client.host if request.client else None
-        user_agent_header = request.headers.get("user-agent")
-
         result = submit_response(
             survey_id=payload.survey_id,
             access_code=payload.access_code,
             answers=[a.model_dump() for a in payload.answers],
             respondent_id=current_user["user_id"],
             is_anonymous_choice=payload.is_anonymous,
-            ip_address=ip_address,
-            user_agent=user_agent_header,
             completion_time=payload.completion_time,
         )
         return JSONResponse(
