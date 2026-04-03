@@ -115,3 +115,8 @@ python -m pytest tests -q
 
 ## 5.贡献者
 
+第9组
+
+- 吴晨曦：[wcxxx57 (Wu Chenxi)](https://github.com/wcxxx57)
+
+- 丁熙妍：[dxy831 (Ding Xiyan)](https://github.com/dxy831)
