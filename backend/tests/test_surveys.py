@@ -124,3 +124,41 @@ def test_get_public_survey_should_block_expired_survey(api_client):
 	public_resp = client.get(f"/public/surveys/{access_code}")
 	assert public_resp.status_code == 400
 	assert public_resp.json()["code"] == 2004
+<<<<<<< HEAD
+=======
+
+
+def test_close_survey_success(api_client):
+	client, _ = api_client
+
+	create_resp = client.post(
+		"/surveys",
+		json={"title": "待关闭问卷", "settings": {"allow_anonymous": True, "allow_multiple": False}},
+	)
+	survey_id = create_resp.json()["data"]["survey_id"]
+
+	client.post(f"/surveys/{survey_id}/publish")
+
+	close_resp = client.post(f"/surveys/{survey_id}/close")
+	assert close_resp.status_code == 200
+	assert close_resp.json()["code"] == 0
+	assert close_resp.json()["data"]["status"] == "closed"
+
+
+def test_delete_survey_success(api_client):
+	client, _ = api_client
+
+	create_resp = client.post(
+		"/surveys",
+		json={"title": "待删除问卷", "settings": {"allow_anonymous": True, "allow_multiple": False}},
+	)
+	survey_id = create_resp.json()["data"]["survey_id"]
+
+	delete_resp = client.delete(f"/surveys/{survey_id}")
+	assert delete_resp.status_code == 200
+	assert delete_resp.json()["code"] == 0
+
+	get_resp = client.get(f"/surveys/{survey_id}")
+	assert get_resp.status_code == 404
+
+>>>>>>> 200a9100c2df0b5efad61e9b1e5fe3c197b33f36
