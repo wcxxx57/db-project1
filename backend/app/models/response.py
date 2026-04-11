@@ -9,11 +9,13 @@ from pydantic import BaseModel, Field
 
 class Answer(BaseModel):
     """单个题目的答案"""
-    question_id: str = Field(..., description="对应的题目 ID")
+    question_id: str = Field(..., description="对应的题目 ID（问卷内部局部题号）")
     answer: Union[str, List[str], int, float] = Field(
         ...,
         description="答案值: single_choice→str, multiple_choice→[str], text_input→str, number_input→Number"
     )
+    question_ref_id: Optional[str] = Field(None, description="引用 questions._id（第二阶段新增）")
+    version_number: Optional[int] = Field(None, description="题目版本号（第二阶段新增）")
 
 
 # ============ 请求模型 ============
@@ -97,3 +99,16 @@ class ResponseInDB(BaseModel):
     submitted_at: datetime = Field(default_factory=datetime.now)
     answers: list = Field(default_factory=list)
     completion_time: Optional[int] = None
+
+
+# ============ 跨问卷单题统计模型（第二阶段新增） ============
+
+class CrossSurveyQuestionStatistic(BaseModel):
+    """跨问卷单题统计结果"""
+    question_ref_id: str = Field(..., description="题目谱系 ID")
+    question_title: str = Field(..., description="题目文本（最新版本）")
+    question_type: str = Field(..., description="题目类型")
+    total_answers: int = Field(..., description="跨问卷总回答数")
+    survey_count: int = Field(..., description="涉及的问卷数量")
+    surveys: list = Field(default_factory=list, description="命中的问卷列表")
+    version_statistics: list = Field(default_factory=list, description="按版本分组的统计")

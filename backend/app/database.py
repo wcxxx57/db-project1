@@ -41,8 +41,17 @@ def init_indexes():
     db.surveys.create_index("access_code", unique=True)
     db.surveys.create_index("status")
     db.surveys.create_index([("created_at", -1)])
+    # 第二阶段新增：反查"哪些问卷使用了这道题"
+    db.surveys.create_index("questions.question_ref_id")
 
     # responses 集合索引
     db.responses.create_index([("survey_id", 1), ("submitted_at", -1)])
     db.responses.create_index([("survey_id", 1), ("respondent_id", 1)])
     db.responses.create_index("respondent_id")
+    # 第二阶段新增：跨问卷统计
+    db.responses.create_index("answers.question_ref_id")
+
+    # 第二阶段新增：questions 集合索引
+    db.questions.create_index("access_control.creator")
+    db.questions.create_index("access_control.shared_with")
+    db.questions.create_index("access_control.banked_by")

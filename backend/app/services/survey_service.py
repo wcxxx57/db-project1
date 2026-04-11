@@ -1,7 +1,7 @@
 import secrets
 import string
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 
@@ -34,8 +34,52 @@ def _generate_access_code(length: int = 8) -> str:
         if not db.surveys.find_one({"access_code": code}):
             return code
 
-def _serialize_survey(doc: Dict[str, Any]) -> Dict[str, Any]:
+
+def _resolve_question_refs(questions: list) -> list:
+    """批量解析问卷中的题目引用，补全题目版本内容用于前端展示。
+
+    输入：问卷的 questions 数组（引用格式）
+    输出：每个引用项 + 解析后的题目内容字段
+    """
+    db = get_db()
+    if not questions:
+        return []
+
+    # 收集需要查询的 question_ref_id
+    ref_ids = list({q["question_ref_id"] for q in questions if q.get("question_ref_id")})
+    if not ref_ids:
+        return questions
+
+    # 批量查询题目文档
+    try:
+        obj_ids = [ObjectId(rid) for rid in ref_ids]
+    except InvalidId:
+        return questions
+    docs = {str(d["_id"]): d for d in db.questions.find({"_id": {"$in": obj_ids}})}
+
+    resolved = []
+    for q in questions:
+        item = dict(q)
+        ref_id = q.get("question_ref_id")
+        vn = q.get("version_number")
+        doc = docs.get(ref_id)
+        if doc and vn is not None:
+            for v in doc.get("versions", []):
+                if v["version_number"] == vn:
+                    item["type"] = v.get("type", "")
+                    item["title"] = v.get("title", "")
+                    item["options"] = v.get("options")
+                    item["validation"] = v.get("validation")
+                    break
+        resolved.append(item)
+    return resolved
+
+
+def _serialize_survey(doc: Dict[str, Any], resolve_refs: bool = True) -> Dict[str, Any]:
     """将 MongoDB 文档转换为 API 响应格式"""
+    questions = doc.get("questions", [])
+    if resolve_refs:
+        questions = _resolve_question_refs(questions)
     return {
         "survey_id": str(doc["_id"]),
         "title": doc["title"],
@@ -48,7 +92,7 @@ def _serialize_survey(doc: Dict[str, Any]) -> Dict[str, Any]:
         "deadline": _to_utc_aware(doc.get("deadline")),
         "response_count": doc.get("response_count", 0),
         "settings": doc.get("settings", {"allow_anonymous": True, "allow_multiple": False}),
-        "questions": doc.get("questions", []),
+        "questions": questions,
     }
 
 
@@ -101,14 +145,14 @@ def get_survey_detail(survey_id: str, user_id: str) -> dict:
         obj_id = ObjectId(survey_id)
     except InvalidId:
         raise SurveyServiceError(ErrorCodes.SURVEY_NOT_FOUND, "问卷不存在", 404)
-        
+
     doc = db.surveys.find_one({"_id": obj_id})
     if not doc:
         raise SurveyServiceError(ErrorCodes.SURVEY_NOT_FOUND, "问卷不存在", 404)
-        
+
     if str(doc.get("creator_id")) != user_id:
         raise SurveyServiceError(ErrorCodes.NO_PERMISSION, "无权限操作该问卷", 403)
-        
+
     return _serialize_survey(doc)
 
 
@@ -116,10 +160,10 @@ def get_my_surveys(user_id: str, page: int = 1, page_size: int = 10) -> dict:
     db = get_db()
     skip = (page - 1) * page_size
     query = {"creator_id": ObjectId(user_id)}
-    
+
     total = db.surveys.count_documents(query)
     cursor = db.surveys.find(query).sort("created_at", -1).skip(skip).limit(page_size)
-    
+
     surveys = [_serialize_survey_list_item(doc) for doc in cursor]
 
     return {
@@ -132,28 +176,28 @@ def get_my_surveys(user_id: str, page: int = 1, page_size: int = 10) -> dict:
 def publish_survey(survey_id: str, user_id: str) -> dict:
     db = get_db()
     survey = get_survey_detail(survey_id, user_id)
-    
+
     if survey["status"] != "published":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
             {"$set": {"status": "published", "updated_at": datetime.now()}}
         )
         survey["status"] = "published"
-        
+
     return survey
 
 
 def close_survey(survey_id: str, user_id: str) -> dict:
     db = get_db()
     survey = get_survey_detail(survey_id, user_id)
-    
+
     if survey["status"] != "closed":
         db.surveys.update_one(
             {"_id": ObjectId(survey_id)},
             {"$set": {"status": "closed", "updated_at": datetime.now()}}
         )
         survey["status"] = "closed"
-        
+
     return survey
 
 
@@ -165,95 +209,94 @@ def delete_survey(survey_id: str, user_id: str) -> None:
     db.surveys.delete_one({"_id": ObjectId(survey_id)})
 
 
-def _validate_question_validation(question: dict) -> Optional[str]:
-    """验证题目的 validation 规则，返回错误信息或 None"""
-    validation = question.get("validation")
-    if not validation:
+def _validate_question_refs(questions_dict: list, user_id: str) -> Optional[str]:
+    """验证题目引用列表：检查 question_ref_id + version_number 存在且用户有权限"""
+    db = get_db()
+
+    ref_ids = list({q["question_ref_id"] for q in questions_dict if q.get("question_ref_id")})
+    if not ref_ids:
         return None
-    
-    q_type = question.get("type")
-    q_title = question.get("title", "未命名题目")
-    
-    # 多选题验证
-    if q_type == "multiple_choice":
-        min_sel = validation.get("min_selected")
-        max_sel = validation.get("max_selected")
-        if min_sel is not None and max_sel is not None and max_sel < min_sel:
-            return f"「{q_title}」最多选择项({max_sel})不能小于最少选择项({min_sel})"
-    
-    # 文本填空验证
-    if q_type == "text_input":
-        min_len = validation.get("min_length")
-        max_len = validation.get("max_length")
-        if min_len is not None and max_len is not None and max_len < min_len:
-            return f"「{q_title}」最多字数({max_len})不能小于最少字数({min_len})"
-    
-    # 数字填空验证
-    if q_type == "number_input":
-        min_val = validation.get("min_value")
-        max_val = validation.get("max_value")
-        if min_val is not None and max_val is not None and max_val < min_val:
-            return f"「{q_title}」最大值({max_val})不能小于最小值({min_val})"
-    
+
+    try:
+        obj_ids = [ObjectId(rid) for rid in ref_ids]
+    except InvalidId:
+        return "题目引用 ID 格式无效"
+
+    docs = {str(d["_id"]): d for d in db.questions.find({"_id": {"$in": obj_ids}})}
+
+    for q in questions_dict:
+        ref_id = q.get("question_ref_id")
+        vn = q.get("version_number")
+        if not ref_id or vn is None:
+            return f"题目引用缺少 question_ref_id 或 version_number"
+
+        doc = docs.get(ref_id)
+        if not doc:
+            return f"引用的题目 {ref_id} 不存在"
+
+        # 权限校验：创建者或被共享者
+        ac = doc.get("access_control", {})
+        if ac.get("creator") != user_id and user_id not in ac.get("shared_with", []):
+            return f"无权使用题目 {ref_id}"
+
+        # 版本校验
+        found = False
+        for v in doc.get("versions", []):
+            if v["version_number"] == vn:
+                found = True
+                break
+        if not found:
+            return f"题目 {ref_id} 的版本 {vn} 不存在"
+
     return None
 
 
-def _validate_jump_logic(questions: list) -> Optional[str]:
-    """验证跳转逻辑，检测无效目标和循环跳转"""
-    if not questions:
+def _validate_jump_logic_refs(questions_dict: list) -> Optional[str]:
+    """验证引用格式下的跳转逻辑"""
+    if not questions_dict:
         return None
-    
-    # 构建 question_id 集合和索引映射
-    qid_set = {q["question_id"] for q in questions}
-    qid_to_order = {q["question_id"]: q.get("order", 0) for q in questions}
-    
-    # 1. 验证跳转目标是否存在
-    for q in questions:
+
+    qid_set = {q["question_id"] for q in questions_dict}
+    qid_to_order = {q["question_id"]: q.get("order", 0) for q in questions_dict}
+
+    for q in questions_dict:
         logic = q.get("logic")
         if not logic or not logic.get("enabled"):
             continue
-        
+
         rules = logic.get("rules", [])
         for rule in rules:
             action = rule.get("action", {})
             if action.get("type") == "jump_to":
                 target = action.get("target_question_id")
                 if target and target not in qid_set:
-                    return f"「{q.get('title', q['question_id'])}」的跳转目标「{target}」不存在"
-                
-                # 检查是否向前跳转
+                    return f"题目「{q['question_id']}」的跳转目标「{target}」不存在"
                 if target and qid_to_order.get(target, 0) <= qid_to_order.get(q["question_id"], 0):
-                    return f"「{q.get('title', q['question_id'])}」不允许向前跳转到「{target}」"
-    
-    # 2. 检测循环跳转（简化版：检测直接和间接循环）
+                    return f"题目「{q['question_id']}」不允许向前跳转到「{target}」"
+
+    # 循环检测
     def has_cycle(start_qid: str, visited: set) -> bool:
         if start_qid in visited:
             return True
         visited.add(start_qid)
-        
-        # 找到该题目
-        q = next((q for q in questions if q["question_id"] == start_qid), None)
+        q = next((q for q in questions_dict if q["question_id"] == start_qid), None)
         if not q:
             return False
-        
         logic = q.get("logic")
         if not logic or not logic.get("enabled"):
             return False
-        
-        # 检查所有可能的跳转目标
         for rule in logic.get("rules", []):
             action = rule.get("action", {})
             if action.get("type") == "jump_to":
                 target = action.get("target_question_id")
                 if target and has_cycle(target, visited.copy()):
                     return True
-        
         return False
-    
-    for q in questions:
+
+    for q in questions_dict:
         if has_cycle(q["question_id"], set()):
-            return f"检测到循环跳转，涉及题目「{q.get('title', q['question_id'])}」"
-    
+            return f"检测到循环跳转，涉及题目「{q['question_id']}」"
+
     return None
 
 
@@ -282,26 +325,26 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     if request.deadline is not None:
         update_fields["deadline"] = _to_utc_aware(request.deadline)
     if request.questions is not None:
-        # 验证题目的 validation 规则
         questions_dict = [q.model_dump() for q in request.questions]
-        for q in questions_dict:
-            error = _validate_question_validation(q)
-            if error:
-                raise SurveyServiceError(
-                    ErrorCodes.ANSWER_VALIDATION_FAILED,
-                    f"题目验证规则错误：{error}",
-                    400,
-                )
-        
+
+        # 验证题目引用合法性
+        error = _validate_question_refs(questions_dict, user_id)
+        if error:
+            raise SurveyServiceError(
+                ErrorCodes.ANSWER_VALIDATION_FAILED,
+                f"题目引用校验失败：{error}",
+                400,
+            )
+
         # 验证跳转逻辑
-        error = _validate_jump_logic(questions_dict)
+        error = _validate_jump_logic_refs(questions_dict)
         if error:
             raise SurveyServiceError(
                 ErrorCodes.ANSWER_VALIDATION_FAILED,
                 f"跳转逻辑错误：{error}",
                 400,
             )
-        
+
         update_fields["questions"] = questions_dict
 
     db.surveys.update_one(
@@ -313,7 +356,8 @@ def update_survey(survey_id: str, user_id: str, request) -> Dict[str, Any]:
     return get_survey_detail(survey_id, user_id)
 
 
-def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> Dict[str, Any]: # 通过访问码获取可填写问卷
+def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> Dict[str, Any]:
+    """通过访问码获取可填写问卷"""
     db = get_db()
 
     doc = db.surveys.find_one({"access_code": access_code})
@@ -339,6 +383,9 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
         )
         has_submitted = existing_count > 0
 
+    # 解析题目引用内容，前端填写端不感知引用细节
+    questions = _resolve_question_refs(doc.get("questions", []))
+
     return {
         "survey_id": str(doc["_id"]),
         "title": doc.get("title", ""),
@@ -346,7 +393,7 @@ def get_public_survey(access_code: str, respondent_id: Optional[str] = None) -> 
         "access_code": doc.get("access_code"),
         "deadline": deadline,
         "settings": settings,
-        "questions": doc.get("questions", []),
+        "questions": questions,
         "has_submitted": has_submitted,
         "allow_multiple": allow_multiple,
     }

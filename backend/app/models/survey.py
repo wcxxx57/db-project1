@@ -74,10 +74,10 @@ class QuestionOption(BaseModel):
     text: str = Field(..., description="选项文本")
 
 
-# ============ 题目模型 ============
+# ============ 题目模型（第一阶段兼容） ============
 
 class Question(BaseModel):
-    """题目"""
+    """题目（第一阶段内嵌格式，仍用于部分内部逻辑）"""
     question_id: str = Field(..., description="题目唯一标识，如 q1, q2")
     type: str = Field(..., description="题目类型: single_choice / multiple_choice / text_input / number_input")
     title: str = Field(..., description="题目文本")
@@ -86,6 +86,17 @@ class Question(BaseModel):
     options: Optional[List[QuestionOption]] = Field(None, description="选项列表（仅选择题使用）")
     validation: Optional[QuestionValidation] = Field(None, description="校验规则")
     logic: Optional[QuestionLogic] = Field(None, description="跳转逻辑")
+
+
+# ============ 第二阶段：问卷题目引用模型 ============
+
+class SurveyQuestionRef(BaseModel):
+    """问卷中的题目引用项（第二阶段）"""
+    question_id: str = Field(..., description="问卷内部局部题号，如 q1, q2，给 logic 跳转路由用")
+    order: int = Field(..., description="题目在此问卷中的顺序")
+    logic: Optional[QuestionLogic] = Field(None, description="跳转逻辑（只属于该份问卷）")
+    question_ref_id: str = Field(..., description="引用 questions._id，题目谱系 ID")
+    version_number: int = Field(..., description="引用的具体版本号")
 
 
 # ============ 问卷设置模型 ============
@@ -107,18 +118,18 @@ class SurveyCreateRequest(BaseModel):
 
 
 class SurveyUpdateRequest(BaseModel):
-    """更新问卷请求"""
+    """更新问卷请求（第二阶段：题目列表改为引用列表）"""
     title: Optional[str] = Field(None, min_length=1, max_length=200, description="问卷标题")
     description: Optional[str] = Field(None, max_length=2000, description="问卷说明")
     settings: Optional[SurveySettings] = Field(None, description="问卷设置")
     deadline: Optional[datetime] = Field(None, description="截止时间")
-    questions: Optional[List[Question]] = Field(None, description="题目列表")
+    questions: Optional[List[SurveyQuestionRef]] = Field(None, description="题目引用列表")
 
 
 # ============ 响应模型 ============
 
 class SurveyResponse(BaseModel):
-    """问卷响应"""
+    """问卷响应（第二阶段：questions 为引用列表）"""
     survey_id: str = Field(..., description="问卷 ID")
     title: str = Field(..., description="问卷标题")
     description: Optional[str] = Field(None, description="问卷说明")
@@ -130,7 +141,7 @@ class SurveyResponse(BaseModel):
     deadline: Optional[datetime] = Field(None, description="截止时间")
     response_count: int = Field(default=0, description="已收集答卷数")
     settings: SurveySettings = Field(..., description="问卷设置")
-    questions: List[Question] = Field(default_factory=list, description="题目列表")
+    questions: list = Field(default_factory=list, description="题目引用列表")
 
 
 class SurveyListItem(BaseModel):

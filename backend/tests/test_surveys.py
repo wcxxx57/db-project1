@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
 
-from tests.conftest import create_base_questions
+from tests.conftest import create_base_questions, convert_to_refs
 
 
 def test_create_survey_success_with_expected_data_structure(api_client):
@@ -34,7 +34,7 @@ def test_create_survey_success_with_expected_data_structure(api_client):
 
 
 def test_add_questions_and_logic_should_be_persisted(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -42,11 +42,12 @@ def test_add_questions_and_logic_should_be_persisted(api_client):
 	)
 	survey_id = create_resp.json()["data"]["survey_id"]
 
+	questions_refs = create_base_questions(ctx.db, ctx.auth.user_id)
 	update_resp = client.put(
 		f"/surveys/{survey_id}",
 		json={
 			"title": "跳转逻辑问卷-v2",
-			"questions": create_base_questions(),
+			"questions": questions_refs,
 		},
 	)
 

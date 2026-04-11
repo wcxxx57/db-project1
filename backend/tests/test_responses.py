@@ -1,7 +1,7 @@
-from tests.conftest import create_base_questions
+from tests.conftest import create_base_questions, convert_to_refs
 
 
-def _prepare_published_survey_with_logic(client):
+def _prepare_published_survey_with_logic(client, ctx):
 	create_resp = client.post(
 		"/surveys",
 		json={"title": "答卷逻辑测试", "settings": {"allow_anonymous": True, "allow_multiple": False}},
@@ -9,9 +9,10 @@ def _prepare_published_survey_with_logic(client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
+	questions_refs = create_base_questions(ctx.db, ctx.auth.user_id)
 	update_resp = client.put(
 		f"/surveys/{survey_id}",
-		json={"questions": create_base_questions()},
+		json={"questions": questions_refs},
 	)
 	assert update_resp.status_code == 200
 
@@ -22,10 +23,9 @@ def _prepare_published_survey_with_logic(client):
 
 
 def test_submit_response_should_follow_jump_logic_and_allow_skip_non_required_path(api_client):
-	client, _ = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	client, ctx = api_client
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
-	# q1=opt_yes 会直接跳到 q3，q2 虽为必填但不在实际路径中，不应报缺失
 	submit_resp = client.post(
 		"/responses",
 		json={
@@ -47,10 +47,9 @@ def test_submit_response_should_follow_jump_logic_and_allow_skip_non_required_pa
 
 
 def test_submit_response_missing_required_question_on_actual_path_should_fail(api_client):
-	client, _ = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	client, ctx = api_client
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
-	# q1=opt_no 时按顺序到 q2，缺失 q2 应触发必填错误
 	submit_resp = client.post(
 		"/responses",
 		json={
@@ -69,8 +68,8 @@ def test_submit_response_missing_required_question_on_actual_path_should_fail(ap
 
 
 def test_submit_response_number_validation_should_fail_when_integer_required(api_client):
-	client, _ = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	client, ctx = api_client
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
 	submit_resp = client.post(
 		"/responses",
@@ -90,8 +89,8 @@ def test_submit_response_number_validation_should_fail_when_integer_required(api
 
 
 def test_submit_response_should_reject_duplicate_when_allow_multiple_false(api_client):
-	client, _ = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	client, ctx = api_client
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
 	first = client.post(
 		"/responses",
@@ -122,7 +121,7 @@ def test_submit_response_should_reject_duplicate_when_allow_multiple_false(api_c
 
 
 def test_submit_response_should_reject_anonymous_choice_when_not_allowed(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -131,9 +130,10 @@ def test_submit_response_should_reject_anonymous_choice_when_not_allowed(api_cli
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
+	questions_refs = create_base_questions(ctx.db, ctx.auth.user_id)
 	client.put(
 		f"/surveys/{survey_id}",
-		json={"questions": create_base_questions()},
+		json={"questions": questions_refs},
 	)
 	client.post(f"/surveys/{survey_id}/publish")
 
@@ -156,7 +156,7 @@ def test_submit_response_should_reject_anonymous_choice_when_not_allowed(api_cli
 
 
 def test_text_input_min_length_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -165,21 +165,16 @@ def test_text_input_min_length_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "text_input",
-					"title": "请描述",
-					"required": True,
-					"order": 1,
-					"validation": {"min_length": 5, "max_length": 100},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "text_input",
+		"title": "请描述",
+		"required": True,
+		"order": 1,
+		"validation": {"min_length": 5, "max_length": 100},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -197,7 +192,7 @@ def test_text_input_min_length_validation_should_fail(api_client):
 
 
 def test_text_input_max_length_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -206,21 +201,16 @@ def test_text_input_max_length_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "text_input",
-					"title": "简短描述",
-					"required": True,
-					"order": 1,
-					"validation": {"min_length": 1, "max_length": 10},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "text_input",
+		"title": "简短描述",
+		"required": True,
+		"order": 1,
+		"validation": {"min_length": 1, "max_length": 10},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -238,7 +228,7 @@ def test_text_input_max_length_validation_should_fail(api_client):
 
 
 def test_multiple_choice_min_selected_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -247,26 +237,21 @@ def test_multiple_choice_min_selected_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "multiple_choice",
-					"title": "选择工具",
-					"required": True,
-					"order": 1,
-					"options": [
-						{"option_id": "opt1", "text": "工具1"},
-						{"option_id": "opt2", "text": "工具2"},
-						{"option_id": "opt3", "text": "工具3"},
-					],
-					"validation": {"min_selected": 2, "max_selected": 3},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "multiple_choice",
+		"title": "选择工具",
+		"required": True,
+		"order": 1,
+		"options": [
+			{"option_id": "opt1", "text": "工具1"},
+			{"option_id": "opt2", "text": "工具2"},
+			{"option_id": "opt3", "text": "工具3"},
+		],
+		"validation": {"min_selected": 2, "max_selected": 3},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -284,7 +269,7 @@ def test_multiple_choice_min_selected_validation_should_fail(api_client):
 
 
 def test_multiple_choice_max_selected_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -293,26 +278,21 @@ def test_multiple_choice_max_selected_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "multiple_choice",
-					"title": "选择工具",
-					"required": True,
-					"order": 1,
-					"options": [
-						{"option_id": "opt1", "text": "工具1"},
-						{"option_id": "opt2", "text": "工具2"},
-						{"option_id": "opt3", "text": "工具3"},
-					],
-					"validation": {"min_selected": 1, "max_selected": 2},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "multiple_choice",
+		"title": "选择工具",
+		"required": True,
+		"order": 1,
+		"options": [
+			{"option_id": "opt1", "text": "工具1"},
+			{"option_id": "opt2", "text": "工具2"},
+			{"option_id": "opt3", "text": "工具3"},
+		],
+		"validation": {"min_selected": 1, "max_selected": 2},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -330,7 +310,7 @@ def test_multiple_choice_max_selected_validation_should_fail(api_client):
 
 
 def test_number_input_min_value_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -339,21 +319,16 @@ def test_number_input_min_value_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "number_input",
-					"title": "年龄",
-					"required": True,
-					"order": 1,
-					"validation": {"min_value": 0, "max_value": 120, "integer_only": True},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "number_input",
+		"title": "年龄",
+		"required": True,
+		"order": 1,
+		"validation": {"min_value": 0, "max_value": 120, "integer_only": True},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -371,7 +346,7 @@ def test_number_input_min_value_validation_should_fail(api_client):
 
 
 def test_number_input_max_value_validation_should_fail(api_client):
-	client, _ = api_client
+	client, ctx = api_client
 
 	create_resp = client.post(
 		"/surveys",
@@ -380,21 +355,16 @@ def test_number_input_max_value_validation_should_fail(api_client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
-	client.put(
-		f"/surveys/{survey_id}",
-		json={
-			"questions": [
-				{
-					"question_id": "q1",
-					"type": "number_input",
-					"title": "年龄",
-					"required": True,
-					"order": 1,
-					"validation": {"min_value": 0, "max_value": 120, "integer_only": True},
-				}
-			]
-		},
-	)
+	raw_q = [{
+		"question_id": "q1",
+		"type": "number_input",
+		"title": "年龄",
+		"required": True,
+		"order": 1,
+		"validation": {"min_value": 0, "max_value": 120, "integer_only": True},
+	}]
+	refs = convert_to_refs(ctx.db, ctx.auth.user_id, raw_q)
+	client.put(f"/surveys/{survey_id}", json={"questions": refs})
 	client.post(f"/surveys/{survey_id}/publish")
 
 	submit_resp = client.post(
@@ -413,7 +383,7 @@ def test_number_input_max_value_validation_should_fail(api_client):
 
 def test_get_response_list_by_creator(api_client):
 	client, ctx = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
 	responder = ctx.create_user("responder")
 	ctx.switch_user(responder, "responder")
@@ -444,7 +414,7 @@ def test_get_response_list_by_creator(api_client):
 
 def test_get_response_detail_by_creator(api_client):
 	client, ctx = api_client
-	survey_id, access_code = _prepare_published_survey_with_logic(client)
+	survey_id, access_code = _prepare_published_survey_with_logic(client, ctx)
 
 	responder = ctx.create_user("responder")
 	ctx.switch_user(responder, "responder")
@@ -472,4 +442,3 @@ def test_get_response_detail_by_creator(api_client):
 	assert data["response_id"] == response_id
 	assert data["survey_id"] == survey_id
 	assert len(data["answers"]) == 2
-

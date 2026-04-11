@@ -1,7 +1,7 @@
 from tests.conftest import create_multi_type_questions
 
 
-def _prepare_published_stats_survey(client):
+def _prepare_published_stats_survey(client, ctx):
 	create_resp = client.post(
 		"/surveys",
 		json={"title": "统计问卷", "settings": {"allow_anonymous": True, "allow_multiple": True}},
@@ -9,9 +9,10 @@ def _prepare_published_stats_survey(client):
 	survey_id = create_resp.json()["data"]["survey_id"]
 	access_code = create_resp.json()["data"]["access_code"]
 
+	questions_refs = create_multi_type_questions(ctx.db, ctx.auth.user_id)
 	update_resp = client.put(
 		f"/surveys/{survey_id}",
-		json={"questions": create_multi_type_questions()},
+		json={"questions": questions_refs},
 	)
 	assert update_resp.status_code == 200
 
@@ -40,7 +41,7 @@ def _submit_one(client, survey_id, access_code, single, multi, text, num, is_ano
 
 def test_get_survey_statistics_should_aggregate_all_question_types(api_client):
 	client, ctx = api_client
-	survey_id, access_code = _prepare_published_stats_survey(client)
+	survey_id, access_code = _prepare_published_stats_survey(client, ctx)
 
 	responder_1 = ctx.create_user("responder_1")
 	responder_2 = ctx.create_user("responder_2")
@@ -105,7 +106,7 @@ def test_get_survey_statistics_should_aggregate_all_question_types(api_client):
 
 def test_get_question_statistics_should_include_respondent_visibility_rules(api_client):
 	client, ctx = api_client
-	survey_id, access_code = _prepare_published_stats_survey(client)
+	survey_id, access_code = _prepare_published_stats_survey(client, ctx)
 
 	real_user = ctx.create_user("visible_user")
 	anon_user = ctx.create_user("hidden_user")
@@ -148,4 +149,3 @@ def test_get_question_statistics_should_include_respondent_visibility_rules(api_
 	assert len(respondents) == 2
 	assert any(r["is_anonymous"] is False and r["display_name"] == "visible_user" for r in respondents)
 	assert any(r["is_anonymous"] is True and r["display_name"] == "匿名用户" for r in respondents)
-

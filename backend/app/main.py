@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.database import get_db, init_indexes, close_db
-from app.routes import auth, surveys, responses, statistics
+from app.routes import auth, surveys, responses, statistics, questions
 from app.utils.response import error_response, ErrorCodes
 
 
@@ -45,6 +45,7 @@ app.add_middleware(
 # 挂载路由模块
 app.include_router(auth.router, prefix="/auth", tags=["用户认证"])
 app.include_router(surveys.router, prefix="/surveys", tags=["问卷管理"])
+app.include_router(questions.router, prefix="/questions", tags=["题目管理"])
 app.include_router(responses.router, tags=["答卷提交"])
 app.include_router(statistics.router, tags=["统计数据"])
 

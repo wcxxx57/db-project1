@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 
 from app.main import request_validation_exception_handler
 from app.middlewares import auth as auth_middleware
-from app.routes import responses, statistics, surveys
-from app.services import response_service, statistics_service, survey_service
+from app.routes import responses, statistics, surveys, questions as questions_routes
+from app.services import response_service, statistics_service, survey_service, question_service
 
 
 class FakeInsertResult:
@@ -47,17 +47,69 @@ class FakeCursor:
         return iter(self._docs)
 
 
+def _resolve_dot_path(doc: Any, path: str) -> Any:
+    """解析点分隔路径，支持嵌套字典和数组"""
+    parts = path.split(".", 1)
+    key = parts[0]
+    rest = parts[1] if len(parts) > 1 else None
+
+    if isinstance(doc, dict):
+        val = doc.get(key)
+        if rest is None:
+            return val
+        if isinstance(val, list):
+            # 数组中每个元素都尝试匹配
+            return [_resolve_dot_path(item, rest) for item in val]
+        return _resolve_dot_path(val, rest)
+    return None
+
+
 def _matches_value(actual: Any, expected: Any) -> bool:
     if isinstance(expected, dict) and "$in" in expected:
+        if isinstance(actual, list):
+            return any(item in expected["$in"] for item in actual)
         return actual in expected["$in"]
+    if isinstance(actual, list) and not isinstance(expected, list):
+        return expected in actual
     return actual == expected
 
 
 def _matches_query(doc: Dict[str, Any], query: Dict[str, Any]) -> bool:
     for key, expected in query.items():
-        if not _matches_value(doc.get(key), expected):
-            return False
+        if "." in key:
+            actual = _resolve_dot_path(doc, key)
+            # actual 可能是单值或列表（来自数组展开）
+            if isinstance(actual, list):
+                if not any(_matches_value(item, expected) for item in actual):
+                    return False
+            else:
+                if not _matches_value(actual, expected):
+                    return False
+        else:
+            if not _matches_value(doc.get(key), expected):
+                return False
     return True
+
+
+def _set_dot_path(doc: dict, path: str, value: Any) -> None:
+    """设置点分隔路径的值"""
+    parts = path.split(".")
+    for part in parts[:-1]:
+        if part not in doc or not isinstance(doc[part], dict):
+            doc[part] = {}
+        doc = doc[part]
+    doc[parts[-1]] = value
+
+
+def _get_dot_path(doc: dict, path: str, default: Any = None) -> Any:
+    """获取点分隔路径的值"""
+    parts = path.split(".")
+    for part in parts:
+        if isinstance(doc, dict):
+            doc = doc.get(part, default)
+        else:
+            return default
+    return doc
 
 
 class FakeCollection:
@@ -90,11 +142,48 @@ class FakeCollection:
 
         set_payload = update.get("$set", {})
         for key, value in set_payload.items():
-            doc[key] = value
+            if "." in key:
+                _set_dot_path(doc, key, value)
+            else:
+                doc[key] = value
 
         inc_payload = update.get("$inc", {})
         for key, value in inc_payload.items():
-            doc[key] = doc.get(key, 0) + value
+            current = _get_dot_path(doc, key, 0) if "." in key else doc.get(key, 0)
+            if "." in key:
+                _set_dot_path(doc, key, current + value)
+            else:
+                doc[key] = current + value
+
+        push_payload = update.get("$push", {})
+        for key, value in push_payload.items():
+            arr = _get_dot_path(doc, key) if "." in key else doc.get(key)
+            if arr is None:
+                arr = []
+                if "." in key:
+                    _set_dot_path(doc, key, arr)
+                else:
+                    doc[key] = arr
+            arr.append(value)
+
+        add_to_set_payload = update.get("$addToSet", {})
+        for key, value in add_to_set_payload.items():
+            arr = _get_dot_path(doc, key) if "." in key else doc.get(key)
+            if arr is None:
+                arr = []
+                if "." in key:
+                    _set_dot_path(doc, key, arr)
+                else:
+                    doc[key] = arr
+            if value not in arr:
+                arr.append(value)
+
+        pull_payload = update.get("$pull", {})
+        for key, value in pull_payload.items():
+            arr = _get_dot_path(doc, key) if "." in key else doc.get(key)
+            if isinstance(arr, list):
+                while value in arr:
+                    arr.remove(value)
 
     def delete_many(self, query: Dict[str, Any]) -> FakeDeleteResult:
         before = len(self._docs)
@@ -114,6 +203,7 @@ class FakeDB:
         self.users = FakeCollection()
         self.surveys = FakeCollection()
         self.responses = FakeCollection()
+        self.questions = FakeCollection()
 
 
 @dataclass
@@ -144,6 +234,52 @@ class TestContext:
         return str(user_id)
 
 
+def _create_question_doc(db: FakeDB, user_id: str, q: Dict[str, Any]) -> str:
+    """在 FakeDB 的 questions 集合中创建题目文档，返回 question_ref_id（字符串）"""
+    now = datetime.now()
+    version_obj = {
+        "version_number": 1,
+        "created_at": now,
+        "updated_by": user_id,
+        "parent_version_number": None,
+        "type": q.get("type", ""),
+        "title": q.get("title", ""),
+        "required": q.get("required", True),
+        "options": q.get("options"),
+        "validation": q.get("validation"),
+    }
+    question_doc = {
+        "latest_version_number": 1,
+        "access_control": {
+            "creator": user_id,
+            "shared_with": [],
+            "banked_by": [],
+        },
+        "versions": [version_obj],
+    }
+    result = db.questions.insert_one(question_doc)
+    return str(result.inserted_id)
+
+
+def convert_to_refs(db: FakeDB, user_id: str, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将旧格式的内嵌题目列表转换为第二阶段引用格式。
+    自动在 FakeDB 中创建对应的 question 文档。
+    """
+    refs = []
+    for q in questions:
+        ref_id = _create_question_doc(db, user_id, q)
+        ref_item = {
+            "question_id": q["question_id"],
+            "order": q.get("order", 0),
+            "question_ref_id": ref_id,
+            "version_number": 1,
+        }
+        if q.get("logic"):
+            ref_item["logic"] = q["logic"]
+        refs.append(ref_item)
+    return refs
+
+
 @pytest.fixture
 def api_client(monkeypatch: pytest.MonkeyPatch):
     db = FakeDB()
@@ -164,10 +300,12 @@ def api_client(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(survey_service, "get_db", lambda: db)
     monkeypatch.setattr(response_service, "get_db", lambda: db)
     monkeypatch.setattr(statistics_service, "get_db", lambda: db)
+    monkeypatch.setattr(question_service, "get_db", lambda: db)
 
     app = FastAPI()
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.include_router(surveys.router, prefix="/surveys")
+    app.include_router(questions_routes.router, prefix="/questions")
     app.include_router(responses.router)
     app.include_router(statistics.router)
 
@@ -184,7 +322,8 @@ def api_client(monkeypatch: pytest.MonkeyPatch):
     return client, ctx
 
 
-def create_base_questions() -> List[Dict[str, Any]]:
+def create_base_questions_raw() -> List[Dict[str, Any]]:
+    """返回旧格式的内嵌题目（用于 convert_to_refs）"""
     return [
         {
             "question_id": "q1",
@@ -225,7 +364,16 @@ def create_base_questions() -> List[Dict[str, Any]]:
     ]
 
 
-def create_multi_type_questions() -> List[Dict[str, Any]]:
+def create_base_questions(db: FakeDB = None, user_id: str = None) -> List[Dict[str, Any]]:
+    """返回引用格式的题目列表（需传入 db 和 user_id）"""
+    raw = create_base_questions_raw()
+    if db is not None and user_id is not None:
+        return convert_to_refs(db, user_id, raw)
+    return raw
+
+
+def create_multi_type_questions_raw() -> List[Dict[str, Any]]:
+    """返回旧格式的多类型题目"""
     return [
         {
             "question_id": "q_single",
@@ -268,3 +416,11 @@ def create_multi_type_questions() -> List[Dict[str, Any]]:
             "validation": {"min_value": 0, "max_value": 24, "integer_only": False},
         },
     ]
+
+
+def create_multi_type_questions(db: FakeDB = None, user_id: str = None) -> List[Dict[str, Any]]:
+    """返回引用格式的多类型题目列表"""
+    raw = create_multi_type_questions_raw()
+    if db is not None and user_id is not None:
+        return convert_to_refs(db, user_id, raw)
+    return raw

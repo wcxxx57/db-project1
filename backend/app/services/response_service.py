@@ -1,9 +1,10 @@
-"""答卷提交业务逻辑 —— 含跳转逻辑引擎 & 答案校验"""
+"""答卷提交业务逻辑 —— 含跳转逻辑引擎 & 答案校验（第二阶段改造）"""
 
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Union
 
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from app.database import get_db
 from app.utils.response import ErrorCodes
@@ -29,6 +30,48 @@ def _to_utc_aware(dt: Optional[datetime]) -> Optional[datetime]:
 
 
 # ====================================================================
+#  解析题目引用 → 完整题目内容
+# ====================================================================
+
+def _resolve_survey_questions(survey: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """将问卷的引用格式题目解析为包含完整内容的题目列表"""
+    db = get_db()
+    questions = survey.get("questions", [])
+    if not questions:
+        return []
+
+    # 收集需要查询的 question_ref_id
+    ref_ids = list({q["question_ref_id"] for q in questions if q.get("question_ref_id")})
+
+    question_docs = {}
+    if ref_ids:
+        try:
+            obj_ids = [ObjectId(rid) for rid in ref_ids]
+            for d in db.questions.find({"_id": {"$in": obj_ids}}):
+                question_docs[str(d["_id"])] = d
+        except InvalidId:
+            pass
+
+    resolved = []
+    for q in questions:
+        item = dict(q)
+        ref_id = q.get("question_ref_id")
+        vn = q.get("version_number")
+        doc = question_docs.get(ref_id)
+        if doc and vn is not None:
+            for v in doc.get("versions", []):
+                if v["version_number"] == vn:
+                    item["type"] = v.get("type", "")
+                    item["title"] = v.get("title", "")
+                    item["required"] = v.get("required", True)
+                    item["options"] = v.get("options")
+                    item["validation"] = v.get("validation")
+                    break
+        resolved.append(item)
+    return resolved
+
+
+# ====================================================================
 #  跳转逻辑引擎
 # ====================================================================
 
@@ -47,10 +90,8 @@ def _evaluate_contains_option_condition(condition: Dict, answer: Any) -> bool:
     match_type = condition.get("match_type", "any")
 
     if match_type == "all":
-        # AND：所有目标选项都必须被选中
         return all(opt_id in answer for opt_id in target_ids)
     else:
-        # any (OR)：选中的选项中包含任一目标选项即触发
         return any(opt_id in answer for opt_id in target_ids)
 
 
@@ -87,15 +128,7 @@ def _evaluate_number_compare_condition(condition: Dict, answer: Any) -> bool:
 
 
 def evaluate_condition(condition: Dict, answer: Any) -> bool:
-    """评估单个跳转条件是否成立
-
-    Args:
-        condition: 条件字典，包含 type 和其他相关字段
-        answer: 用户对该题的回答
-
-    Returns:
-        条件是否成立
-    """
+    """评估单个跳转条件是否成立"""
     cond_type = condition.get("type", "")
 
     if cond_type == "select_option":
@@ -109,24 +142,13 @@ def evaluate_condition(condition: Dict, answer: Any) -> bool:
 
 
 def compute_jump_target(question: Dict, answer: Any) -> Optional[str]:
-    """根据题目的跳转逻辑和用户答案，计算跳转目标
-
-    Args:
-        question: 题目字典（含 logic 字段）
-        answer: 用户对该题的回答
-
-    Returns:
-        - "__END__": 结束问卷
-        - question_id 字符串: 跳转到指定题目
-        - None: 无跳转，按顺序继续下一题
-    """
+    """根据题目的跳转逻辑和用户答案，计算跳转目标"""
     logic = question.get("logic")
     if not logic or not logic.get("enabled"):
         return None
 
     rules = logic.get("rules", [])
 
-    # 按规则顺序评估，第一个命中的规则生效
     for rule in rules:
         condition = rule.get("condition", {})
         action = rule.get("action", {})
@@ -142,25 +164,12 @@ def compute_jump_target(question: Dict, answer: Any) -> Optional[str]:
 
 
 def compute_required_questions(questions: List[Dict], answers_map: Dict[str, Any]) -> List[str]:
-    """根据跳转逻辑和用户的答案，计算实际需要回答的题目列表
-
-    从第一题开始，根据每题的跳转逻辑决定下一题，
-    返回用户应该回答的 question_id 列表。
-
-    Args:
-        questions: 按 order 排序的题目列表
-        answers_map: {question_id: answer_value} 字典
-
-    Returns:
-        实际需要回答的 question_id 列表
-    """
+    """根据跳转逻辑和用户的答案，计算实际需要回答的题目列表"""
     if not questions:
         return []
 
-    # 按 order 排序
     sorted_questions = sorted(questions, key=lambda q: q.get("order", 0))
 
-    # 构建 question_id -> index 映射
     qid_to_index = {}
     for i, q in enumerate(sorted_questions):
         qid_to_index[q["question_id"]] = i
@@ -173,25 +182,18 @@ def compute_required_questions(questions: List[Dict], answers_map: Dict[str, Any
         qid = q["question_id"]
         required_qids.append(qid)
 
-        # 获取该题的答案
         answer = answers_map.get(qid)
-
-        # 计算跳转
         jump_target = compute_jump_target(q, answer)
 
         if jump_target == "__END__":
-            # 结束问卷
             break
         elif jump_target is not None and jump_target in qid_to_index:
-            # 跳转到指定题目
             target_index = qid_to_index[jump_target]
             if target_index > current_index:
                 current_index = target_index
             else:
-                # 防止向前跳转导致死循环，按顺序继续
                 current_index += 1
         else:
-            # 无跳转，下一题
             current_index += 1
 
     return required_qids
@@ -202,29 +204,19 @@ def compute_required_questions(questions: List[Dict], answers_map: Dict[str, Any
 # ====================================================================
 
 def validate_single_answer(question: Dict, answer: Any) -> Optional[str]:
-    """校验单个题目的答案
-
-    Args:
-        question: 题目字典
-        answer: 用户回答
-
-    Returns:
-        错误信息字符串，None 表示通过
-    """
+    """校验单个题目的答案"""
     q_type = question.get("type", "")
     q_title = question.get("title", "")
     validation = question.get("validation") or {}
     options = question.get("options") or []
     option_ids = {opt["option_id"] for opt in options}
 
-    # ---- 单选题 ----
     if q_type == "single_choice":
         if not isinstance(answer, str):
             return f"「{q_title}」的答案必须是字符串（选项ID）"
         if answer not in option_ids:
             return f"「{q_title}」选择了不存在的选项：{answer}"
 
-    # ---- 多选题 ----
     elif q_type == "multiple_choice":
         if not isinstance(answer, list):
             return f"「{q_title}」的答案必须是数组（选项ID列表）"
@@ -247,7 +239,6 @@ def validate_single_answer(question: Dict, answer: Any) -> Optional[str]:
             if max_sel is not None and count > max_sel:
                 return f"「{q_title}」最多选择 {max_sel} 项，当前选择了 {count} 项"
 
-    # ---- 文本填空 ----
     elif q_type == "text_input":
         if not isinstance(answer, str):
             return f"「{q_title}」的答案必须是字符串"
@@ -260,7 +251,6 @@ def validate_single_answer(question: Dict, answer: Any) -> Optional[str]:
         if max_len is not None and text_len > max_len:
             return f"「{q_title}」最多输入 {max_len} 个字，当前 {text_len} 个字"
 
-    # ---- 数字填空 ----
     elif q_type == "number_input":
         if not isinstance(answer, (int, float)):
             return f"「{q_title}」的答案必须是数字"
@@ -291,18 +281,7 @@ def submit_response(
     is_anonymous_choice: Optional[bool] = None,
     completion_time: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """提交答卷
-
-    Args:
-        survey_id: 问卷ID
-        access_code: 访问码
-        answers: 答案列表 [{"question_id": "q1", "answer": ...}, ...]
-        respondent_id: 答题者用户ID（匿名时为 None）
-        completion_time: 完成用时（秒）
-
-    Returns:
-        提交结果字典
-    """
+    """提交答卷（第二阶段：基于解析后的题目版本内容校验，写入时补齐引用信息）"""
     db = get_db()
 
     # 1. 获取问卷
@@ -327,7 +306,7 @@ def submit_response(
     if deadline and deadline < datetime.now(timezone.utc):
         raise ResponseServiceError(ErrorCodes.SURVEY_EXPIRED, "问卷已过期", 400)
 
-    # 5. 登录校验：必须登录才能填写
+    # 5. 登录校验
     if respondent_id is None:
         raise ResponseServiceError(
             ErrorCodes.LOGIN_REQUIRED,
@@ -340,7 +319,6 @@ def submit_response(
     allow_anonymous = settings.get("allow_anonymous", True)
     allow_multiple = settings.get("allow_multiple", False)
 
-    # 用户主动选择匿名（需问卷允许）
     if is_anonymous_choice is True and allow_anonymous:
         is_anonymous = True
     else:
@@ -365,13 +343,13 @@ def submit_response(
             400,
         )
 
-    # 8. 构建 answers_map
-    questions = survey.get("questions", [])
-    question_map = {q["question_id"]: q for q in questions}
+    # 8. 解析题目引用内容
+    resolved_questions = _resolve_survey_questions(survey)
+    question_map = {q["question_id"]: q for q in resolved_questions}
     answers_map = {a["question_id"]: a["answer"] for a in answers}
 
     # 9. 根据跳转逻辑计算实际需要回答的题目
-    required_qids = compute_required_questions(questions, answers_map)
+    required_qids = compute_required_questions(resolved_questions, answers_map)
 
     # 10. 校验必填题
     for qid in required_qids:
@@ -400,24 +378,35 @@ def submit_response(
                 400,
             )
 
-    # 12. 构建答卷文档并存储（始终保存 respondent_id）
+    # 12. 构建答卷文档（补齐 question_ref_id 和 version_number）
     now = datetime.now()
+    required_set = set(required_qids)
+    answer_docs = []
+    for a in answers:
+        if a["question_id"] not in required_set:
+            continue
+        q = question_map.get(a["question_id"])
+        answer_doc = {
+            "question_id": a["question_id"],
+            "answer": a["answer"],
+        }
+        if q:
+            answer_doc["question_ref_id"] = q.get("question_ref_id")
+            answer_doc["version_number"] = q.get("version_number")
+        answer_docs.append(answer_doc)
+
     response_doc = {
         "survey_id": ObjectId(survey_id),
         "respondent_id": ObjectId(respondent_id),
         "is_anonymous": is_anonymous,
         "submitted_at": now,
-        "answers": [
-            {"question_id": a["question_id"], "answer": a["answer"]}
-            for a in answers
-            if a["question_id"] in set(required_qids)
-        ],
+        "answers": answer_docs,
         "completion_time": completion_time,
     }
 
     result = db.responses.insert_one(response_doc)
 
-    # 12. 更新问卷的 response_count
+    # 13. 更新问卷的 response_count
     db.surveys.update_one(
         {"_id": ObjectId(survey_id)},
         {"$inc": {"response_count": 1}},
@@ -439,7 +428,6 @@ def get_response_list(survey_id: str, creator_id: str) -> List[Dict[str, Any]]:
     """获取某问卷的答卷列表（创建者权限），包含填写者信息"""
     db = get_db()
 
-    # 验证权限
     try:
         survey = db.surveys.find_one({"_id": ObjectId(survey_id)})
     except Exception:
@@ -455,7 +443,6 @@ def get_response_list(survey_id: str, creator_id: str) -> List[Dict[str, Any]]:
         {"survey_id": ObjectId(survey_id)}
     ).sort("submitted_at", -1)
 
-    # 收集所有 respondent_id 并批量查询用户名
     docs = list(cursor)
     respondent_ids = list({doc["respondent_id"] for doc in docs if doc.get("respondent_id")})
     user_map: Dict[str, str] = {}
@@ -494,12 +481,10 @@ def get_response_detail(response_id: str, creator_id: str) -> Dict[str, Any]:
     if doc is None:
         raise ResponseServiceError(ErrorCodes.SURVEY_NOT_FOUND, "答卷不存在", 404)
 
-    # 验证权限
     survey = db.surveys.find_one({"_id": doc["survey_id"]})
     if survey is None or str(survey["creator_id"]) != creator_id:
         raise ResponseServiceError(ErrorCodes.NO_PERMISSION, "无权限查看该答卷", 403)
 
-    # 获取用户名
     rid = doc.get("respondent_id")
     is_anon = doc.get("is_anonymous", True)
     respondent_name = None
