@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import SurveyFill from "./components/SurveyFill";
 import SurveyEditor from "./components/SurveyEditor";
 import StatisticsView from "./components/StatisticsView";
+import QuestionManager from "./components/QuestionManager";
 import { AUTH_TOKEN_KEY, AUTH_USER_KEY } from "./services/api";
 import type { LoginResponse, UserInfo } from "./types";
 import "./App.css";
@@ -55,6 +56,11 @@ function SurveyEditorRoute() {
       onBack={() => navigate("/dashboard")}
     />
   );
+}
+
+function QuestionManagerRoute() {
+  const navigate = useNavigate();
+  return <QuestionManager onBack={() => navigate("/dashboard")} />;
 }
 
 function getStoredUser(): UserInfo | null {
@@ -140,6 +146,18 @@ export default function App() {
           element={
             isLoggedIn ? (
               <SurveyEditorRoute />
+            ) : (
+              <AuthModal onLoginSuccess={handleLoginSuccess} />
+            )
+          }
+        />
+
+        {/* 题目管理页面（第二阶段新增） */}
+        <Route
+          path="/questions"
+          element={
+            isLoggedIn ? (
+              <QuestionManagerRoute />
             ) : (
               <AuthModal onLoginSuccess={handleLoginSuccess} />
             )

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import type { PublicSurvey, Question, Answer } from "../types";
+import type { PublicSurvey, SurveyQuestionRef, Answer } from "../types";
 import { getPublicSurvey, submitResponse, AUTH_TOKEN_KEY, AUTH_USER_KEY } from "../services/api";
 
 interface SurveyFillProps {
   accessCode: string;
   onBack: () => void;
 }
+
+/** 解析后的题目（后端返回的 SurveyQuestionRef 已包含完整内容字段） */
+type ResolvedQuestion = SurveyQuestionRef & {
+  type: string;
+  title: string;
+  required: boolean;
+};
 
 /* ====================================================================
    前端跳转逻辑引擎 —— 与后端 response_service.py 保持一致
@@ -50,7 +57,7 @@ function evaluateCondition(
 }
 
 function computeJumpTarget(
-  question: Question,
+  question: ResolvedQuestion,
   answer: string | string[] | number | undefined,
 ): string | null {
   const logic = question.logic;
@@ -67,16 +74,16 @@ function computeJumpTarget(
 
 /** 根据当前所有答案，计算可见题目序列 */
 function computeVisibleQuestions(
-  questions: Question[],
+  questions: ResolvedQuestion[],
   answersMap: Record<string, string | string[] | number>,
-): Question[] {
+): ResolvedQuestion[] {
   if (questions.length === 0) return [];
 
   const sorted = [...questions].sort((a, b) => a.order - b.order);
   const qidToIndex: Record<string, number> = {};
   sorted.forEach((q, i) => (qidToIndex[q.question_id] = i));
 
-  const visible: Question[] = [];
+  const visible: ResolvedQuestion[] = [];
   let idx = 0;
 
   while (idx < sorted.length) {
@@ -102,7 +109,7 @@ function computeVisibleQuestions(
    ==================================================================== */
 
 function validateAnswer(
-  question: Question,
+  question: ResolvedQuestion,
   answer: string | string[] | number | undefined,
 ): string | null {
   const v = question.validation || {};
@@ -143,7 +150,7 @@ function validateAnswer(
   return null;
 }
 
-function getQuestionTypeLabel(type: Question["type"]): string {
+function getQuestionTypeLabel(type: string): string {
   if (type === "single_choice") return "单选题";
   if (type === "multiple_choice") return "多选题";
   if (type === "text_input") return "文本填空";
@@ -193,7 +200,7 @@ export default function SurveyFill({ accessCode, onBack }: SurveyFillProps) {
   // 计算可见题目
   const visibleQuestions = useMemo(() => {
     if (!survey) return [];
-    return computeVisibleQuestions(survey.questions, answers);
+    return computeVisibleQuestions(survey.questions as ResolvedQuestion[], answers);
   }, [survey, answers]);
 
   // 当前进度

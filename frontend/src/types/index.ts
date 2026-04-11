@@ -1,5 +1,5 @@
 /* ==============================
-   统一类型定义
+   统一类型定义（第二阶段扩展）
    ============================== */
 
 // ---- API 通用 ----
@@ -83,7 +83,7 @@ export interface QuestionLogic {
   rules: LogicRule[];
 }
 
-// ---- 题目 ----
+// ---- 题目（第一阶段内嵌格式，仍用于编辑器内部状态） ----
 export interface Question {
   question_id: string;
   type: "single_choice" | "multiple_choice" | "text_input" | "number_input";
@@ -93,6 +93,21 @@ export interface Question {
   options?: QuestionOption[];
   validation?: QuestionValidation;
   logic?: QuestionLogic;
+}
+
+// ---- 第二阶段：问卷题目引用 ----
+export interface SurveyQuestionRef {
+  question_id: string;
+  order: number;
+  logic?: QuestionLogic;
+  question_ref_id: string;
+  version_number: number;
+  // 以下字段由后端解析填充
+  type?: string;
+  title?: string;
+  required?: boolean;
+  options?: QuestionOption[];
+  validation?: QuestionValidation;
 }
 
 // ---- 问卷 ----
@@ -108,7 +123,7 @@ export interface Survey {
   deadline?: string;
   response_count: number;
   settings: SurveySettings;
-  questions: Question[];
+  questions: SurveyQuestionRef[];
 }
 
 
@@ -138,7 +153,7 @@ export interface PublicSurvey {
   access_code: string;
   settings: SurveySettings;
   deadline?: string;
-  questions: Question[];
+  questions: SurveyQuestionRef[];
   has_submitted?: boolean;
   allow_multiple?: boolean;
 }
@@ -225,5 +240,85 @@ export interface UpdateSurveyRequest {
   description?: string;
   settings?: SurveySettings;
   deadline?: string;
-  questions?: Question[];
+  questions?: SurveyQuestionRef[];
+}
+
+// ============ 第二阶段新增：题目域类型 ============
+
+// ---- 题目版本 ----
+export interface QuestionVersion {
+  version_number: number;
+  created_at: string;
+  updated_by: string;
+  parent_version_number: number | null;
+  type: string;
+  title: string;
+  options?: QuestionOption[];
+  validation?: QuestionValidation;
+}
+
+// ---- 题目详情 ----
+export interface QuestionDetail {
+  question_id: string;
+  latest_version_number: number;
+  creator: string;
+  shared_with: string[];
+  banked_by: string[];
+  versions: QuestionVersion[];
+}
+
+// ---- 题目列表项 ----
+export interface QuestionListItem {
+  question_id: string;
+  latest_version_number: number;
+  creator: string;
+  latest_title: string;
+  latest_type: string;
+  created_at: string;
+}
+
+// ---- 题目使用情况 ----
+export interface QuestionUsageItem {
+  survey_id: string;
+  survey_title: string;
+  survey_status: string;
+  version_number: number;
+}
+
+// ---- 题目创建/新版本请求 ----
+export interface CreateQuestionRequest {
+  type: string;
+  title: string;
+  options?: QuestionOption[];
+  validation?: QuestionValidation;
+}
+
+export interface CreateVersionRequest {
+  type: string;
+  title: string;
+  options?: QuestionOption[];
+  validation?: QuestionValidation;
+  parent_version_number?: number;
+}
+
+// ---- 跨问卷单题统计 ----
+export interface CrossSurveyVersionStat {
+  version_number: number;
+  title: string;
+  type: string;
+  total_answers: number;
+  survey_count: number;
+  option_statistics?: OptionStatistic[];
+  text_responses?: string[];
+  number_statistics?: NumberStatistics;
+}
+
+export interface CrossSurveyQuestionStatistics {
+  question_ref_id: string;
+  question_title: string;
+  question_type: string;
+  total_answers: number;
+  survey_count: number;
+  surveys: { survey_id: string; title: string; status: string }[];
+  version_statistics: CrossSurveyVersionStat[];
 }

@@ -9,6 +9,7 @@ import {
   Loader2,
   XCircle,
   PlayCircle,
+  BookOpen,
 } from "lucide-react";
 import {
   getMySurveys,
@@ -225,18 +226,27 @@ export default function Dashboard() {
       {/* Main Content Area */}
       <main className="relative z-10 flex-1 w-full max-w-5xl mx-auto px-8 py-16 flex flex-col">
         {/* Create Button */}
-        <button
-          onClick={handleCreate}
-          disabled={isCreating}
-          className="main-create-btn flex items-center justify-center gap-3 px-12 py-5 w-full sm:w-auto text-xl font-extrabold text-[var(--brown-deep)] mb-16 mx-auto"
-        >
-          {isCreating ? (
-            <Loader2 className="animate-spin" size={28} />
-          ) : (
-            <Plus size={28} className="stroke-[2.5]" />
-          )}
-          <span>创建新问卷</span>
-        </button>
+        <div className="flex items-center justify-center gap-4 mb-16">
+          <button
+            onClick={handleCreate}
+            disabled={isCreating}
+            className="main-create-btn flex items-center justify-center gap-3 px-12 py-5 text-xl font-extrabold text-[var(--brown-deep)]"
+          >
+            {isCreating ? (
+              <Loader2 className="animate-spin" size={28} />
+            ) : (
+              <Plus size={28} className="stroke-[2.5]" />
+            )}
+            <span>创建新问卷</span>
+          </button>
+          <button
+            onClick={() => navigate("/questions")}
+            className="main-create-btn flex items-center justify-center gap-3 px-12 py-5 text-xl font-extrabold text-[var(--brown-deep)]"
+          >
+            <BookOpen size={28} className="stroke-[2.5]" />
+            <span>题目管理</span>
+          </button>
+        </div>
 
         {/* Survey List Header */}
         <div className="w-full mb-8">

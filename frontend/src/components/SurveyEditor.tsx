@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Question, QuestionOption, QuestionLogic, LogicRule, Survey } from "../types";
-import { getSurveyDetail, updateSurvey } from "../services/api";
+import type { SurveyQuestionRef, QuestionOption, QuestionValidation, QuestionLogic, LogicRule, Survey, QuestionListItem, QuestionDetail, QuestionVersion } from "../types";
+import { getSurveyDetail, updateSurvey, createQuestion, getBankedQuestions, getSharedQuestions, getQuestionDetail, addToBank, createNewVersion } from "../services/api";
 
 interface SurveyEditorProps {
   surveyId: string;
@@ -39,40 +39,43 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
   const [allowAnonymous, setAllowAnonymous] = useState(true);
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [deadline, setDeadline] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<SurveyQuestionRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
+  // 追踪题目来源：新建 vs 题库选取
+  const [newlyCreatedQids, setNewlyCreatedQids] = useState<Set<string>>(new Set());
+  const [bankedQids, setBankedQids] = useState<Set<string>>(new Set());
+  // 记录题库题目的原始内容，用于检测修改
+  const [originalContent, setOriginalContent] = useState<Record<string, { type: string; title: string; options?: QuestionOption[]; validation?: QuestionValidation }>>({});
+
   // 验证题目的 validation 规则
-  const validateQuestion = useCallback((q: Question): string | null => {
+  const validateQuestion = useCallback((q: SurveyQuestionRef): string | null => {
     if (!q.validation) return null;
-    
+
     const v = q.validation;
-    
-    // 多选题验证
+
     if (q.type === "multiple_choice") {
       if (v.min_selected !== undefined && v.max_selected !== undefined && v.max_selected < v.min_selected) {
         return `「${q.title}」最多选择项(${v.max_selected})不能小于最少选择项(${v.min_selected})`;
       }
     }
-    
-    // 文本填空验证
+
     if (q.type === "text_input") {
       if (v.min_length !== undefined && v.max_length !== undefined && v.max_length < v.min_length) {
         return `「${q.title}」最多字数(${v.max_length})不能小于最少字数(${v.min_length})`;
       }
     }
-    
-    // 数字填空验证
+
     if (q.type === "number_input") {
       if (v.min_value !== undefined && v.max_value !== undefined && v.max_value < v.min_value) {
         return `「${q.title}」最大值(${v.max_value})不能小于最小值(${v.min_value})`;
       }
     }
-    
+
     return null;
   }, []);
 
@@ -101,6 +104,17 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
         setAllowMultiple(data.settings.allow_multiple);
         setDeadline(formatDateTimeLocal(data.deadline));
         setQuestions(data.questions || []);
+        // 已有题目视为题库题目，记录原始内容以检测修改
+        const origMap: Record<string, { type: string; title: string; options?: QuestionOption[]; validation?: QuestionValidation }> = {};
+        (data.questions || []).forEach((q: SurveyQuestionRef) => {
+          origMap[q.question_id] = {
+            type: q.type || "",
+            title: q.title || "",
+            options: q.options ? JSON.parse(JSON.stringify(q.options)) : undefined,
+            validation: q.validation ? JSON.parse(JSON.stringify(q.validation)) : undefined,
+          };
+        });
+        setOriginalContent(origMap);
       } catch (e: any) {
         setMessage(e.message);
       } finally {
@@ -116,48 +130,186 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
       setMessage("❌ 保存失败：存在验证错误，请检查题目设置");
       return;
     }
-    
+
     setSaving(true);
     setMessage(null);
     try {
+      let updatedQuestions = [...questions];
+      let newVersionCount = 0;
+
+      for (let i = 0; i < updatedQuestions.length; i++) {
+        const q = updatedQuestions[i];
+
+        if (q.question_ref_id.startsWith("__temp_")) {
+          // 临时题目：创建真正的 question 文档（v1 = 当前内容）
+          const result = await createQuestion({
+            type: q.type!,
+            title: q.title || "未命名题目",
+            options: q.options,
+            validation: q.validation,
+          });
+          updatedQuestions[i] = {
+            ...q,
+            question_ref_id: result.question_id,
+            version_number: result.version_number,
+          };
+        } else {
+          // 已有题目：检测是否被修改，修改则自动创建新版本
+          const orig = originalContent[q.question_id];
+          if (orig) {
+            const modified =
+              orig.type !== q.type ||
+              orig.title !== q.title ||
+              JSON.stringify(orig.options || []) !== JSON.stringify(q.options || []) ||
+              JSON.stringify(orig.validation || {}) !== JSON.stringify(q.validation || {});
+            if (modified) {
+              const result = await createNewVersion(q.question_ref_id, {
+                type: q.type!,
+                title: q.title!,
+                options: q.options,
+                validation: q.validation,
+                parent_version_number: q.version_number,
+              });
+              updatedQuestions[i] = {
+                ...q,
+                version_number: result.version_number,
+              };
+              newVersionCount++;
+            }
+          }
+        }
+      }
+      setQuestions(updatedQuestions);
+
+      // 更新原始内容快照（保存后当前内容成为新基准）
+      const newOrigMap: Record<string, { type: string; title: string; options?: QuestionOption[]; validation?: QuestionValidation }> = {};
+      updatedQuestions.forEach((q) => {
+        newOrigMap[q.question_id] = {
+          type: q.type || "",
+          title: q.title || "",
+          options: q.options ? JSON.parse(JSON.stringify(q.options)) : undefined,
+          validation: q.validation ? JSON.parse(JSON.stringify(q.validation)) : undefined,
+        };
+      });
+      setOriginalContent(newOrigMap);
+
+      // 只发送引用字段
+      const refsToSave: SurveyQuestionRef[] = updatedQuestions.map((q) => ({
+        question_id: q.question_id,
+        order: q.order,
+        logic: q.logic,
+        question_ref_id: q.question_ref_id,
+        version_number: q.version_number,
+      }));
       await updateSurvey(surveyId, {
         title,
         description: description || undefined,
         settings: { allow_anonymous: allowAnonymous, allow_multiple: allowMultiple },
         deadline: toIsoFromLocalDateTime(deadline),
-        questions,
+        questions: refsToSave,
       });
-      setMessage("✅ 保存成功");
+      const versionMsg = newVersionCount > 0 ? `（已为 ${newVersionCount} 道修改的题目自动创建新版本）` : "";
+      setMessage(`✅ 保存成功${versionMsg}`);
     } catch (e: any) {
       setMessage(e.message);
     } finally {
       setSaving(false);
     }
-  }, [surveyId, title, description, allowAnonymous, allowMultiple, deadline, questions, validateAllQuestions]);
+  }, [surveyId, title, description, allowAnonymous, allowMultiple, deadline, questions, originalContent, validateAllQuestions]);
 
-  // 添加题目
+  // 添加题目（先创建独立题目，再添加引用）
+  // 从题库选题
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerQuestions, setPickerQuestions] = useState<QuestionListItem[]>([]);
+  const [pickerTab, setPickerTab] = useState<"my" | "shared">("my");
+  const [pickerDetails, setPickerDetails] = useState<Record<string, QuestionDetail>>({});
+  const [pickerExpandedId, setPickerExpandedId] = useState<string | null>(null);
+
   const addQuestion = useCallback(
     (type: string) => {
+      const defaultOptions =
+        type === "single_choice" || type === "multiple_choice"
+          ? [
+              { option_id: "opt1", text: "选项1" },
+              { option_id: "opt2", text: "选项2" },
+            ]
+          : undefined;
+
       const order = questions.length + 1;
       const qid = `q${order}`;
-      const newQ: Question = {
+      // 用临时 ref，保存问卷或加入题库时再真正创建
+      const tempRefId = `__temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const newRef: SurveyQuestionRef = {
         question_id: qid,
-        type: type as Question["type"],
+        order,
+        question_ref_id: tempRefId,
+        version_number: 1,
+        type,
         title: "",
         required: true,
-        order,
-        options:
-          type === "single_choice" || type === "multiple_choice"
-            ? [
-                { option_id: "opt1", text: "选项1" },
-                { option_id: "opt2", text: "选项2" },
-              ]
-            : [],
+        options: defaultOptions,
         validation: {},
         logic: { enabled: false, rules: [] },
       };
-      setQuestions((prev) => [...prev, newQ]);
+      setQuestions((prev) => [...prev, newRef]);
       setExpandedQ(qid);
+      setNewlyCreatedQids((prev) => new Set(prev).add(qid));
+    },
+    [questions],
+  );
+
+  const loadPickerQuestions = useCallback(async () => {
+    try {
+      const data = pickerTab === "my" ? await getBankedQuestions() : await getSharedQuestions();
+      setPickerQuestions(data);
+      setPickerDetails({});
+      setPickerExpandedId(null);
+    } catch (e: any) {
+      setMessage(e.message);
+    }
+  }, [pickerTab]);
+
+  useEffect(() => {
+    if (showPicker) loadPickerQuestions();
+  }, [showPicker, loadPickerQuestions]);
+
+  const togglePickerExpand = useCallback(async (id: string) => {
+    if (pickerExpandedId === id) { setPickerExpandedId(null); return; }
+    setPickerExpandedId(id);
+    if (!pickerDetails[id]) {
+      try {
+        const d = await getQuestionDetail(id);
+        setPickerDetails((prev) => ({ ...prev, [id]: d }));
+      } catch (e: any) { setMessage(e.message); }
+    }
+  }, [pickerExpandedId, pickerDetails]);
+
+  const addFromPicker = useCallback(
+    (refId: string, version: QuestionVersion) => {
+      const order = questions.length + 1;
+      const qid = `q${order}`;
+      const newRef: SurveyQuestionRef = {
+        question_id: qid,
+        order,
+        question_ref_id: refId,
+        version_number: version.version_number,
+        type: version.type,
+        title: version.title,
+        options: version.options,
+        validation: version.validation,
+      };
+      setQuestions((prev) => [...prev, newRef]);
+      setShowPicker(false);
+      // 记录原始内容用于后续修改检测
+      setOriginalContent((prev) => ({
+        ...prev,
+        [qid]: {
+          type: version.type,
+          title: version.title,
+          options: version.options ? JSON.parse(JSON.stringify(version.options)) : undefined,
+          validation: version.validation ? JSON.parse(JSON.stringify(version.validation)) : undefined,
+        },
+      }));
     },
     [questions],
   );
@@ -192,7 +344,7 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
 
   // 更新题目字段
   const updateQuestion = useCallback(
-    (qid: string, patch: Partial<Question>) => {
+    (qid: string, patch: Partial<SurveyQuestionRef>) => {
       setQuestions((prev) =>
         prev.map((q) => (q.question_id === qid ? { ...q, ...patch } : q)),
       );
@@ -337,6 +489,108 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
     },
     [],
   );
+
+  // 检测题库题目是否被修改
+  const isQuestionModified = useCallback((q: SurveyQuestionRef): boolean => {
+    const orig = originalContent[q.question_id];
+    if (!orig) return false;
+    if (orig.type !== q.type || orig.title !== q.title) return true;
+    if (JSON.stringify(orig.options || []) !== JSON.stringify(q.options || [])) return true;
+    if (JSON.stringify(orig.validation || {}) !== JSON.stringify(q.validation || {})) return true;
+    return false;
+  }, [originalContent]);
+
+  // 版本切换
+  const [versionPickerQid, setVersionPickerQid] = useState<string | null>(null);
+  const [versionPickerData, setVersionPickerData] = useState<QuestionVersion[] | null>(null);
+  const [versionPickerLoading, setVersionPickerLoading] = useState(false);
+
+  const toggleVersionPicker = useCallback(async (q: SurveyQuestionRef) => {
+    if (versionPickerQid === q.question_id) {
+      setVersionPickerQid(null);
+      setVersionPickerData(null);
+      return;
+    }
+    setVersionPickerQid(q.question_id);
+    setVersionPickerData(null);
+    setVersionPickerLoading(true);
+    try {
+      const detail = await getQuestionDetail(q.question_ref_id);
+      setVersionPickerData(detail.versions);
+    } catch (e: any) {
+      setMessage(e.message);
+      setVersionPickerQid(null);
+    } finally {
+      setVersionPickerLoading(false);
+    }
+  }, [versionPickerQid]);
+
+  const switchVersion = useCallback((qid: string, version: QuestionVersion) => {
+    setQuestions((prev) =>
+      prev.map((q) =>
+        q.question_id === qid
+          ? {
+              ...q,
+              version_number: version.version_number,
+              type: version.type,
+              title: version.title,
+              options: version.options,
+              validation: version.validation,
+            }
+          : q,
+      ),
+    );
+    // 更新 originalContent 为切换后版本的内容，避免保存时误判为修改
+    setOriginalContent((prev) => ({
+      ...prev,
+      [qid]: {
+        type: version.type,
+        title: version.title,
+        options: version.options ? JSON.parse(JSON.stringify(version.options)) : undefined,
+        validation: version.validation ? JSON.parse(JSON.stringify(version.validation)) : undefined,
+      },
+    }));
+    setVersionPickerQid(null);
+    setVersionPickerData(null);
+  }, []);
+
+  // 加入我的题库
+  const [bankingQid, setBankingQid] = useState<string | null>(null);
+  const handleAddToBank = useCallback(async (q: SurveyQuestionRef) => {
+    setBankingQid(q.question_id);
+    try {
+      let refId = q.question_ref_id;
+      let versionNum = q.version_number;
+
+      // 临时题目：先创建真正的 question 文档（v1 就是用户当前编辑的内容）
+      if (refId.startsWith("__temp_")) {
+        const result = await createQuestion({
+          type: q.type!,
+          title: q.title || "未命名题目",
+          options: q.options,
+          validation: q.validation,
+        });
+        refId = result.question_id;
+        versionNum = result.version_number;
+        // 更新本地引用
+        setQuestions((prev) =>
+          prev.map((item) =>
+            item.question_id === q.question_id
+              ? { ...item, question_ref_id: refId, version_number: versionNum }
+              : item,
+          ),
+        );
+      }
+
+      await addToBank(refId);
+      setBankedQids((prev) => new Set(prev).add(q.question_id));
+      setMessage("✅ 已加入我的题库");
+    } catch (e: any) {
+      setMessage(e.message);
+    } finally {
+      setBankingQid(null);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -487,6 +741,11 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                     {q.title || "(未填写题目)"}
                   </span>
                   {q.required && <span className="q-required-badge">必答</span>}
+                  {q.question_ref_id && (
+                    <span style={{ fontSize: "0.7rem", color: "#888", marginLeft: "0.25rem" }}>
+                      v{q.version_number}
+                    </span>
+                  )}
                   {q.logic?.enabled && (
                     <span className="q-logic-badge">⚡跳转</span>
                   )}
@@ -523,6 +782,82 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                         placeholder="请输入题目"
                       />
                     </div>
+
+                    {/* 版本切换（仅非临时题目） */}
+                    {!q.question_ref_id.startsWith("__temp_") && (
+                      <div style={{ marginBottom: "0.5rem" }}>
+                        <button
+                          className="add-q-btn"
+                          style={{ fontSize: "0.75rem", padding: "0.2rem 0.6rem" }}
+                          onClick={() => toggleVersionPicker(q)}
+                        >
+                          {versionPickerQid === q.question_id ? "▼ 收起版本列表" : `▶ 切换版本（当前 v${q.version_number}）`}
+                        </button>
+
+                        {versionPickerQid === q.question_id && (
+                          <div style={{ background: "#f9f6f0", borderRadius: "0.4rem", padding: "0.6rem", marginTop: "0.4rem" }}>
+                            {versionPickerLoading ? (
+                              <p style={{ color: "#aaa", fontSize: "0.8rem", margin: 0 }}>加载版本列表...</p>
+                            ) : !versionPickerData ? (
+                              <p style={{ color: "#aaa", fontSize: "0.8rem", margin: 0 }}>暂无版本数据</p>
+                            ) : (
+                              versionPickerData.slice().reverse().map((v) => {
+                                const isCurrent = v.version_number === q.version_number;
+                                const icon = v.type === "single_choice" ? "○" : v.type === "multiple_choice" ? "☐" : null;
+                                return (
+                                  <div
+                                    key={v.version_number}
+                                    style={{
+                                      padding: "0.45rem 0.55rem",
+                                      marginBottom: "0.3rem",
+                                      background: isCurrent ? "#ede5d5" : "#fff",
+                                      border: isCurrent ? "2px solid var(--brown-dark)" : "1px solid #e5e1d8",
+                                      borderRadius: "0.3rem",
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", flex: 1 }}>
+                                        <span style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--brown-dark)" }}>v{v.version_number}</span>
+                                        <span style={{ fontSize: "0.82rem" }}>{v.title}</span>
+                                        <span style={{ fontSize: "0.68rem", color: "#aaa" }}>
+                                          {v.updated_by || ""} {v.created_at ? new Date(v.created_at).toLocaleDateString("zh-CN") : ""}
+                                        </span>
+                                      </div>
+                                      {isCurrent ? (
+                                        <span style={{ fontSize: "0.72rem", color: "var(--brown-dark)", fontWeight: 600, flexShrink: 0 }}>当前版本</span>
+                                      ) : (
+                                        <button
+                                          className="save-btn"
+                                          style={{ fontSize: "0.72rem", padding: "0.15rem 0.5rem", flexShrink: 0 }}
+                                          onClick={() => switchVersion(q.question_id, v)}
+                                        >
+                                          切换到此版本
+                                        </button>
+                                      )}
+                                    </div>
+                                    {/* 选项详情 */}
+                                    {v.options && v.options.length > 0 && (
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem 0.75rem", marginTop: "0.25rem" }}>
+                                        {v.options.map((opt) => (
+                                          <span key={opt.option_id} style={{ fontSize: "0.78rem", color: "#555" }}>
+                                            {icon} {opt.text}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {!v.options?.length && (v.type === "text_input" || v.type === "number_input") && (
+                                      <div style={{ fontSize: "0.75rem", color: "#aaa", marginTop: "0.2rem" }}>
+                                        {v.type === "text_input" ? "[ 文本输入 ]" : "[ 数字输入 ]"}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="field-row-inline">
                       <label className="checkbox-label">
@@ -836,12 +1171,38 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                       </div>
                     )}
 
-                    <button
-                      className="remove-q-btn"
-                      onClick={() => removeQuestion(q.question_id)}
-                    >
-                      🗑 删除此题
-                    </button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem" }}>
+                      <button
+                        className="remove-q-btn"
+                        onClick={() => removeQuestion(q.question_id)}
+                      >
+                        🗑 删除此题
+                      </button>
+
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        {/* 新建题目：加入我的题库 */}
+                        {newlyCreatedQids.has(q.question_id) && !bankedQids.has(q.question_id) && (
+                          <button
+                            className="save-btn"
+                            style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
+                            disabled={bankingQid === q.question_id}
+                            onClick={() => handleAddToBank(q)}
+                          >
+                            {bankingQid === q.question_id ? "加入中..." : "📥 加入我的题库"}
+                          </button>
+                        )}
+                        {newlyCreatedQids.has(q.question_id) && bankedQids.has(q.question_id) && (
+                          <span style={{ fontSize: "0.8rem", color: "#16a34a", alignSelf: "center" }}>✅ 已加入题库</span>
+                        )}
+
+                        {/* 题库题目被修改：提示保存时自动创建新版本 */}
+                        {!newlyCreatedQids.has(q.question_id) && isQuestionModified(q) && (
+                          <span style={{ fontSize: "0.75rem", color: "#b45309", alignSelf: "center" }}>
+                            已修改，保存时将自动创建新版本
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -859,7 +1220,102 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
                 ＋ {t.label}
               </button>
             ))}
+            <button className="add-q-btn" onClick={() => setShowPicker(true)}>
+              📂 从题库选题
+            </button>
           </div>
+
+          {/* 从题库选题面板 */}
+          {showPicker && (
+            <div style={{ background: "#f9f6f0", padding: "1rem", borderRadius: "0.5rem", marginTop: "0.75rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                <h4 style={{ margin: 0 }}>选择题目</h4>
+                <button className="remove-opt-btn" onClick={() => setShowPicker(false)}>✕</button>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                {([["my", "我的题库"], ["shared", "共享给我"]] as ["my" | "shared", string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    className="add-q-btn"
+                    style={{
+                      background: pickerTab === key ? "var(--brown-dark)" : "var(--brown-light)",
+                      color: pickerTab === key ? "#fff" : "var(--brown-dark)",
+                      fontSize: "0.8rem",
+                    }}
+                    onClick={() => setPickerTab(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {pickerQuestions.length === 0 ? (
+                <p style={{ color: "#888", fontSize: "0.875rem" }}>暂无题目</p>
+              ) : (
+                pickerQuestions.map((item) => {
+                  const isExpanded = pickerExpandedId === item.question_id;
+                  const detail = pickerDetails[item.question_id];
+                  return (
+                    <div key={item.question_id} style={{ borderBottom: "1px solid #e5e1d8", paddingBottom: "0.5rem", marginBottom: "0.5rem" }}>
+                      {/* 题目行：点击展开版本列表 */}
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0", cursor: "pointer" }}
+                        onClick={() => togglePickerExpand(item.question_id)}
+                      >
+                        <span style={{ color: "#bbb", fontSize: "0.75rem" }}>{isExpanded ? "▼" : "▶"}</span>
+                        <span className="q-type-badge" style={{ fontSize: "0.7rem" }}>
+                          {item.latest_type === "single_choice" ? "单选" : item.latest_type === "multiple_choice" ? "多选" : item.latest_type === "text_input" ? "文本" : "数字"}
+                        </span>
+                        <strong style={{ fontSize: "0.875rem", flex: 1 }}>{item.latest_title || "(未命名)"}</strong>
+                        <span style={{ fontSize: "0.75rem", color: "#aaa" }}>共 {item.latest_version_number} 个版本</span>
+                      </div>
+                      {/* 版本列表 */}
+                      {isExpanded && (
+                        <div style={{ marginLeft: "1.25rem", marginTop: "0.35rem" }}>
+                          {!detail ? (
+                            <p style={{ color: "#aaa", fontSize: "0.8rem" }}>加载中...</p>
+                          ) : (
+                            detail.versions.slice().reverse().map((v) => (
+                              <div key={v.version_number} style={{ background: "#fff", border: "1px solid #ede5d5", borderRadius: "0.35rem", padding: "0.55rem 0.7rem", marginBottom: "0.4rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                                    <span style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--brown-dark)" }}>v{v.version_number}</span>
+                                    <span style={{ fontSize: "0.85rem" }}>{v.title}</span>
+                                    <span style={{ fontSize: "0.72rem", color: "#aaa" }}>创建者: {v.updated_by || "未知"}</span>
+                                  </div>
+                                  <button
+                                    className="save-btn"
+                                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.6rem" }}
+                                    onClick={(e) => { e.stopPropagation(); addFromPicker(item.question_id, v); }}
+                                  >
+                                    选用此版本
+                                  </button>
+                                </div>
+                                {/* 选项 */}
+                                {v.options && v.options.length > 0 && (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem 0.85rem", marginTop: "0.25rem" }}>
+                                    {v.options.map((opt) => (
+                                      <span key={opt.option_id} style={{ fontSize: "0.8rem", color: "#555" }}>
+                                        {v.type === "single_choice" ? "○" : "☐"} {opt.text}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {!v.options?.length && (
+                                  <div style={{ fontSize: "0.78rem", color: "#aaa", marginTop: "0.2rem" }}>
+                                    {v.type === "text_input" ? "[ 文本输入 ]" : v.type === "number_input" ? "[ 数字输入 ]" : ""}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

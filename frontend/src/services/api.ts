@@ -15,6 +15,13 @@ import type {
   ResponseListItem,
   SurveyStatistics,
   QuestionStatistic,
+  QuestionListItem,
+  QuestionDetail,
+  QuestionVersion,
+  QuestionUsageItem,
+  CreateQuestionRequest,
+  CreateVersionRequest,
+  CrossSurveyQuestionStatistics,
 } from "../types";
 
 export const AUTH_TOKEN_KEY = "survey_auth_token";
@@ -34,6 +41,11 @@ const ERROR_MESSAGE_MAP: Record<number, string> = {
   3002: "您已经提交过该问卷，不允许重复提交",
   3003: "必填题未回答",
   3004: "请先登录后再填写问卷",
+  // 第二阶段新增
+  4001: "题目不存在",
+  4002: "题目版本不存在",
+  4003: "题目正在被已发布问卷使用，无法删除",
+  4004: "共享目标用户不存在",
 };
 
 class ApiBusinessError extends Error {
@@ -270,6 +282,165 @@ export async function getResponseList(
   try {
     const resp = await apiClient.get<ApiResponse<ResponseListItem[]>>(
       `/surveys/${surveyId}/responses`,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+// ============ 第二阶段新增：题目管理 ============
+
+export async function createQuestion(
+  payload: CreateQuestionRequest,
+): Promise<{ question_id: string; version_number: number; created_at: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>("/questions", payload);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getMyQuestions(): Promise<QuestionListItem[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionListItem[]>>("/questions/my");
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getSharedQuestions(): Promise<QuestionListItem[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionListItem[]>>("/questions/shared");
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getBankedQuestions(): Promise<QuestionListItem[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionListItem[]>>("/questions/bank");
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getQuestionDetail(questionId: string): Promise<QuestionDetail> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionDetail>>(`/questions/${questionId}`);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function createNewVersion(
+  questionId: string,
+  payload: CreateVersionRequest,
+): Promise<{ question_id: string; version_number: number; created_at: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>(`/questions/${questionId}/versions`, payload);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getVersionHistory(
+  questionId: string,
+): Promise<QuestionVersion[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionVersion[]>>(`/questions/${questionId}/versions`);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function restoreVersion(
+  questionId: string,
+  versionNumber: number,
+): Promise<{ question_id: string; version_number: number; created_at: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>(
+      `/questions/${questionId}/versions/${versionNumber}/restore`,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function shareQuestion(
+  questionId: string,
+  username: string,
+): Promise<{ message: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>(`/questions/${questionId}/share`, { username });
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function unshareQuestion(
+  questionId: string,
+  username: string,
+): Promise<{ message: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>(`/questions/${questionId}/unshare`, { username });
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function addToBank(questionId: string): Promise<{ message: string }> {
+  try {
+    const resp = await apiClient.post<ApiResponse<any>>(`/questions/${questionId}/bank`);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function removeFromBank(questionId: string): Promise<{ message: string }> {
+  try {
+    const resp = await apiClient.delete<ApiResponse<any>>(`/questions/${questionId}/bank`);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getQuestionUsage(questionId: string): Promise<QuestionUsageItem[]> {
+  try {
+    const resp = await apiClient.get<ApiResponse<QuestionUsageItem[]>>(`/questions/${questionId}/usage`);
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function deleteQuestion(questionId: string): Promise<void> {
+  try {
+    const resp = await apiClient.delete<ApiResponse<null>>(`/questions/${questionId}`);
+    parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
+export async function getCrossSurveyStats(
+  questionRefId: string,
+): Promise<CrossSurveyQuestionStatistics> {
+  try {
+    const resp = await apiClient.get<ApiResponse<CrossSurveyQuestionStatistics>>(
+      `/questions/${questionRefId}/cross-statistics`,
     );
     return parseApiResponse(resp.data);
   } catch (error) {
