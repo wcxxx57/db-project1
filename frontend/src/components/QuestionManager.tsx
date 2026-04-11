@@ -16,6 +16,7 @@ import {
   getQuestionDetail,
   createQuestion,
   createNewVersion,
+  updateVersion,
   shareQuestion,
   unshareQuestion,
   getQuestionUsage,
@@ -200,8 +201,10 @@ export default function QuestionManager({ onBack }: QuestionManagerProps) {
   // 共享输入
   const [shareUsername, setShareUsername] = useState("");
 
-  // 新版本
-  const [newVersionFor, setNewVersionFor] = useState<string | null>(null);
+  // 编辑模式：修改当前版本 or 创建新版本
+  const [editFor, setEditFor] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState<"in_place" | "new_version" | null>(null);
+  const [editChoiceFor, setEditChoiceFor] = useState<string | null>(null); // 显示选择弹窗
   const [versionTitle, setVersionTitle] = useState("");
   const [versionType, setVersionType] = useState("");
   const [versionOptions, setVersionOptions] = useState<QuestionOption[]>([]);
@@ -248,7 +251,9 @@ export default function QuestionManager({ onBack }: QuestionManagerProps) {
       setExpandedId(id);
       setCrossStats(null);
       setShowCrossStatsFor(null);
-      setNewVersionFor(null);
+      setEditFor(null);
+      setEditMode(null);
+      setEditChoiceFor(null);
       if (!detailMap[id]) loadDetail(id);
     },
     [expandedId, detailMap, loadDetail],
@@ -284,7 +289,8 @@ export default function QuestionManager({ onBack }: QuestionManagerProps) {
         validation: latest.validation,
         parent_version_number: entry.detail.latest_version_number,
       });
-      setNewVersionFor(null);
+      setEditFor(null);
+      setEditMode(null);
       flash("新版本创建成功");
       loadDetail(qid);
       loadQuestions();
@@ -487,24 +493,84 @@ export default function QuestionManager({ onBack }: QuestionManagerProps) {
 
                       {/* 操作栏 */}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "0.85rem" }}>
-                        <button className="add-q-btn" onClick={() => {
+                        <button className="add-q-btn" onClick={async () => {
                           if (latest) {
                             setVersionTitle(latest.title);
                             setVersionType(latest.type);
                             setVersionOptions(latest.options ? latest.options.map((o) => ({ ...o })) : []);
                           }
-                          setNewVersionFor(q.question_id);
                           setShowCrossStatsFor(null); setCrossStats(null);
-                        }}>新版本</button>
-                        <button className="add-q-btn" onClick={() => { setNewVersionFor(null); handleLoadCrossStats(q.question_id); }}>跨问卷统计</button>
+                          // 检查最新版本是否被已发布/已关闭问卷使用
+                          let usageList = usage;
+                          if (!entry) {
+                            try { usageList = await getQuestionUsage(q.question_id); } catch (_) {}
+                          }
+                          const latestVn = detail?.latest_version_number || q.latest_version_number;
+                          const protectedUsage = usageList.filter(
+                            (u) => u.version_number === latestVn && (u.survey_status === "published" || u.survey_status === "closed")
+                          );
+                          if (protectedUsage.length > 0) {
+                            // 最新版本被已发布/已关闭问卷使用 → 只能创建新版本
+                            setEditFor(q.question_id);
+                            setEditMode("new_version");
+                            setEditChoiceFor(null);
+                          } else {
+                            // 可以选择：修改当前版本 or 创建新版本
+                            setEditFor(null);
+                            setEditMode(null);
+                            setEditChoiceFor(q.question_id);
+                          }
+                        }}>编辑</button>
+                        <button className="add-q-btn" onClick={() => { setEditFor(null); setEditMode(null); setEditChoiceFor(null); handleLoadCrossStats(q.question_id); }}>跨问卷统计</button>
                         {tab === "bank" && <button className="add-q-btn" style={{ color: "#dc2626" }} onClick={() => handleDelete(q.question_id)}>删除</button>}
                       </div>
 
-                      {/* 新版本表单 */}
-                      {newVersionFor === q.question_id && (
+                      {/* 编辑方式选择弹窗（需求六：修改时可以决定是否创建新版本） */}
+                      {editChoiceFor === q.question_id && (
+                        <div style={{ background: "#f0f4ff", border: "1px solid #bfdbfe", borderRadius: "0.4rem", padding: "0.85rem", marginBottom: "0.85rem", position: "relative" }}>
+                          <button style={{ position: "absolute", top: "0.5rem", right: "0.5rem", background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "#999", lineHeight: 1 }} onClick={() => setEditChoiceFor(null)}>✕</button>
+                          <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.5rem" }}>请选择编辑方式</div>
+                          <div style={{ fontSize: "0.8rem", color: "#555", marginBottom: "0.6rem" }}>
+                            当前最新版本 (v{detail?.latest_version_number || q.latest_version_number}) 未被已发布/已关闭的问卷使用，您可以选择：
+                          </div>
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button className="save-btn" onClick={() => {
+                              setEditChoiceFor(null);
+                              setEditFor(q.question_id);
+                              setEditMode("in_place");
+                            }}>✏️ 修改当前版本</button>
+                            <button className="add-q-btn" style={{ fontWeight: 600 }} onClick={() => {
+                              setEditChoiceFor(null);
+                              setEditFor(q.question_id);
+                              setEditMode("new_version");
+                            }}>＋ 创建新版本</button>
+                          </div>
+                          <div style={{ fontSize: "0.72rem", color: "#888", marginTop: "0.4rem" }}>
+                            提示：修改当前版本会直接改变现有内容；创建新版本会保留旧版本不变
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 编辑表单（修改当前版本 or 创建新版本） */}
+                      {editFor === q.question_id && editMode && (
                         <div style={{ background: "#f9f6f0", padding: "0.85rem", borderRadius: "0.4rem", marginBottom: "0.85rem", position: "relative" }}>
-                          <button style={{ position: "absolute", top: "0.5rem", right: "0.5rem", background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "#999", lineHeight: 1 }} onClick={() => setNewVersionFor(null)}>✕</button>
-                          <div style={{ fontWeight: 600, marginBottom: "0.4rem" }}>创建新版本</div>
+                          <button style={{ position: "absolute", top: "0.5rem", right: "0.5rem", background: "none", border: "none", cursor: "pointer", fontSize: "1rem", color: "#999", lineHeight: 1 }} onClick={() => { setEditFor(null); setEditMode(null); }}>✕</button>
+                          <div style={{ fontWeight: 600, marginBottom: "0.4rem" }}>
+                            {editMode === "in_place"
+                              ? `修改当前版本 (v${detail?.latest_version_number || q.latest_version_number})`
+                              : "创建新版本"}
+                            {editMode === "new_version" && (() => {
+                              const latestVn = detail?.latest_version_number || q.latest_version_number;
+                              const protectedUsage = usage.filter(
+                                (u) => u.version_number === latestVn && (u.survey_status === "published" || u.survey_status === "closed")
+                              );
+                              return protectedUsage.length > 0 ? (
+                                <span style={{ fontSize: "0.75rem", color: "#b45309", fontWeight: 400, marginLeft: "0.5rem" }}>
+                                  （当前版本被 {protectedUsage.length} 份已发布/关闭问卷使用，只能创建新版本）
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
                           <div className="field-row">
                             <label className="field-label">题目文本</label>
                             <input className="editor-input" value={versionTitle} onChange={(e) => setVersionTitle(e.target.value)} />
@@ -538,7 +604,28 @@ export default function QuestionManager({ onBack }: QuestionManagerProps) {
                             </div>
                           )}
                           <div style={{ display: "flex", gap: "0.5rem" }}>
-                            <button className="save-btn" onClick={() => handleCreateVersion(q.question_id)}>创建</button>
+                            <button className="save-btn" onClick={async () => {
+                              if (editMode === "in_place") {
+                                // 原地修改当前版本
+                                try {
+                                  await updateVersion(q.question_id, detail?.latest_version_number || q.latest_version_number, {
+                                    type: versionType,
+                                    title: versionTitle,
+                                    options: versionType.includes("choice") ? versionOptions : undefined,
+                                  });
+                                  setEditFor(null);
+                                  setEditMode(null);
+                                  flash("当前版本已更新");
+                                  loadDetail(q.question_id);
+                                  loadQuestions();
+                                } catch (e: any) { setError(e.message); }
+                              } else {
+                                // 创建新版本
+                                handleCreateVersion(q.question_id);
+                              }
+                            }}>
+                              {editMode === "in_place" ? "保存修改" : "创建新版本"}
+                            </button>
                           </div>
                         </div>
                       )}

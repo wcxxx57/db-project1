@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -65,6 +66,11 @@ def _resolve_dot_path(doc: Any, path: str) -> Any:
 
 
 def _matches_value(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, dict) and "$elemMatch" in expected:
+        if not isinstance(actual, list):
+            return False
+        sub_query = expected["$elemMatch"]
+        return any(isinstance(item, dict) and _matches_query(item, sub_query) for item in actual)
     if isinstance(expected, dict) and "$in" in expected:
         if isinstance(actual, list):
             return any(item in expected["$in"] for item in actual)
@@ -94,22 +100,61 @@ def _matches_query(doc: Dict[str, Any], query: Dict[str, Any]) -> bool:
 def _set_dot_path(doc: dict, path: str, value: Any) -> None:
     """设置点分隔路径的值"""
     parts = path.split(".")
-    for part in parts[:-1]:
-        if part not in doc or not isinstance(doc[part], dict):
-            doc[part] = {}
-        doc = doc[part]
-    doc[parts[-1]] = value
+    current: Any = doc
+    for idx, part in enumerate(parts[:-1]):
+        next_part = parts[idx + 1]
+
+        if isinstance(current, list):
+            list_idx = int(part)
+            while len(current) <= list_idx:
+                current.append({})
+            current = current[list_idx]
+            continue
+
+        if part not in current or not isinstance(current[part], (dict, list)):
+            current[part] = [] if next_part.isdigit() else {}
+        current = current[part]
+
+    last = parts[-1]
+    if isinstance(current, list):
+        list_idx = int(last)
+        while len(current) <= list_idx:
+            current.append(None)
+        current[list_idx] = value
+    else:
+        current[last] = value
 
 
 def _get_dot_path(doc: dict, path: str, default: Any = None) -> Any:
     """获取点分隔路径的值"""
     parts = path.split(".")
+    current: Any = doc
     for part in parts:
-        if isinstance(doc, dict):
-            doc = doc.get(part, default)
+        if isinstance(current, dict):
+            current = current.get(part, default)
+        elif isinstance(current, list) and part.isdigit():
+            list_idx = int(part)
+            if 0 <= list_idx < len(current):
+                current = current[list_idx]
+            else:
+                return default
         else:
             return default
-    return doc
+    return current
+
+
+def _apply_projection(doc: Dict[str, Any], projection: Dict[str, Any]) -> Dict[str, Any]:
+    """简化版 projection：支持包含式投影（field: 1）。"""
+    include_fields = [field for field, flag in projection.items() if flag and field != "_id"]
+    if not include_fields:
+        return deepcopy(doc)
+
+    projected: Dict[str, Any] = {"_id": doc.get("_id")}
+    for field in include_fields:
+        value = _get_dot_path(doc, field, None)
+        if value is not None:
+            _set_dot_path(projected, field, deepcopy(value))
+    return projected
 
 
 class FakeCollection:
@@ -128,9 +173,12 @@ class FakeCollection:
                 return doc
         return None
 
-    def find(self, query: Optional[Dict[str, Any]] = None) -> FakeCursor:
+    def find(self, query: Optional[Dict[str, Any]] = None, projection: Optional[Dict[str, Any]] = None) -> FakeCursor:
         query = query or {}
-        return FakeCursor([doc for doc in self._docs if _matches_query(doc, query)])
+        matched_docs = [doc for doc in self._docs if _matches_query(doc, query)]
+        if projection is None:
+            return FakeCursor(matched_docs)
+        return FakeCursor([_apply_projection(doc, projection) for doc in matched_docs])
 
     def count_documents(self, query: Dict[str, Any]) -> int:
         return sum(1 for doc in self._docs if _matches_query(doc, query))

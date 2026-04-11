@@ -225,6 +225,73 @@ def create_new_version(question_id: str, user_id: str, data: Dict[str, Any]) -> 
     }
 
 
+def update_version(question_id: str, user_id: str, version_number: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    """原地更新指定版本内容（仅当该版本未被已发布/已关闭问卷使用时允许）"""
+    db = get_db()
+    doc = _get_question_doc(question_id)
+    _check_access(doc, user_id)
+
+    # 验证版本存在
+    versions = doc.get("versions", [])
+    target_version = None
+    target_idx = None
+    for idx, v in enumerate(versions):
+        if v["version_number"] == version_number:
+            target_version = v
+            target_idx = idx
+            break
+
+    if target_version is None:
+        raise QuestionServiceError(
+            ErrorCodes.QUESTION_VERSION_NOT_FOUND,
+            f"版本 {version_number} 不存在",
+            404,
+        )
+
+    # 安全检查：查找引用了该版本的已发布/已关闭问卷
+    protected_surveys = list(db.surveys.find({
+        "questions": {
+            "$elemMatch": {
+                "question_ref_id": question_id,
+                "version_number": version_number,
+            }
+        },
+        "status": {"$in": ["published", "closed"]},
+    }, {"_id": 1, "title": 1, "status": 1}))
+
+    if protected_surveys:
+        survey_names = [s.get("title", "未命名") for s in protected_surveys]
+        raise QuestionServiceError(
+            ErrorCodes.NO_PERMISSION,
+            f"该版本正在被 {len(protected_surveys)} 份已发布/已关闭的问卷使用（{', '.join(survey_names[:3])}），"
+            f"不能直接修改，请创建新版本",
+            403,
+        )
+
+    # 原地更新版本内容
+    now = datetime.now()
+    update_fields = {
+        f"versions.{target_idx}.type": data["type"],
+        f"versions.{target_idx}.title": data["title"],
+        f"versions.{target_idx}.options": data.get("options"),
+        f"versions.{target_idx}.validation": data.get("validation"),
+        f"versions.{target_idx}.updated_by": user_id,
+        f"versions.{target_idx}.created_at": now,
+    }
+
+    db.questions.update_one(
+        {"_id": ObjectId(question_id)},
+        {"$set": update_fields},
+    )
+
+    return {
+        "question_id": question_id,
+        "version_number": version_number,
+        "updated_at": now,
+        "mode": "in_place",
+    }
+
+
 def get_version_history(question_id: str, user_id: str) -> List[Dict[str, Any]]:
     """查询题目版本历史"""
     doc = _get_question_doc(question_id)
@@ -379,7 +446,7 @@ def get_question_usage(question_id: str, user_id: str) -> List[Dict[str, Any]]:
 
 
 def delete_question(question_id: str, user_id: str) -> Dict[str, Any]:
-    """删除题目（仅创建者，同时从所有引用该题目的问卷中移除）"""
+    """删除题目（仅创建者；被已发布/已关闭问卷引用时禁止删除）"""
     db = get_db()
     doc = _get_question_doc(question_id)
 
@@ -387,12 +454,26 @@ def delete_question(question_id: str, user_id: str) -> Dict[str, Any]:
     if ac.get("creator") != user_id:
         raise QuestionServiceError(ErrorCodes.NO_PERMISSION, "仅题目创建者可以删除", 403)
 
-    # 查找所有引用该题目的问卷，并从中移除
+    # 查找所有引用该题目的问卷
     affected_surveys = list(db.surveys.find(
         {"questions.question_ref_id": question_id},
-        {"_id": 1, "title": 1, "questions": 1},
+        {"_id": 1, "title": 1, "status": 1, "questions": 1},
     ))
 
+    # 若存在已发布/已关闭问卷引用，则禁止删除
+    protected = [
+        s for s in affected_surveys
+        if s.get("status") in {"published", "closed"}
+    ]
+    if protected:
+        survey_names = [s.get("title", "未命名") for s in protected]
+        raise QuestionServiceError(
+            ErrorCodes.QUESTION_IN_USE,
+            f"题目正在被 {len(protected)} 份已发布/已关闭问卷使用（{', '.join(survey_names[:3])}），无法删除",
+            400,
+        )
+
+    # 仅从草稿问卷中移除题目引用
     for s in affected_surveys:
         # 移除引用该题目的所有条目
         new_questions = [q for q in s.get("questions", []) if q.get("question_ref_id") != question_id]

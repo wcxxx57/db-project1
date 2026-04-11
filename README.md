@@ -1,122 +1,118 @@
 # 在线问卷系统项目说明
 
-本项目是一个基于 **MongoDB + FastAPI + React** 的在线问卷系统（第一阶段）
+## 项目简介
 
-核心能力包括：
-- 用户注册、登录、JWT 鉴权
-- 问卷创建、编辑、发布、关闭、删除
-- 四类题型（单选、多选、文本、数字）
-- 数据驱动跳转逻辑
-- 答卷提交与统计分析
-- 自动化测试
+在线问卷系统第二阶段，在第一阶段的基础上新增了题目独立管理、版本控制、团队共享、题库、跨问卷统计等功能。
 
----
+## 技术栈
 
-## 1. 项目文档说明
+- **后端**：Python 3.12 + FastAPI + MongoDB (pymongo)
+- **前端**：React 18 + TypeScript + Vite + Axios
+- **测试**：Pytest（61 个自动化测试）
 
-仓库根目录下的文档作用如下：
+## 第二阶段新增功能
 
-- [系统说明.md](系统说明.md)：系统功能、业务流程、模块设计的总体说明
-- [数据库设计.md](数据库设计.md)：MongoDB 集合设计、字段说明、索引策略、建模理由，包含 `users / surveys / responses` 三集合关系。
-- [API说明.md](API说明.md)：后端接口协议定义（请求、响应、错误码、鉴权规则），前后端联调参考
-- [关键逻辑说明.md](关键逻辑说明.md)：跳转逻辑、校验策略、提交流程等核心业务逻辑说明
-- [测试用例.md](测试用例.md)：自动化测试用例输入输出与验证结果，相应测试代码在 `backend/tests/` 
-- [配置说明.md](配置说明.md)：环境配置、运行参数、依赖安装等说明
-- [AI使用过程.md](AI使用过程.md)：记录 AI 辅助开发的 prompt、产出、人工修正，包含：AI 帮了什么、做错了什么、如何修正”。
-- [项目完成报告.md](项目完成报告.md)：**最终文档**，pdf版本已提交水杉在线
+1. **题目独立保存与复用** - 题目从问卷中独立出来，可被多个问卷引用
+2. **题目共享** - 按用户名定向共享题目给团队成员
+3. **题目版本管理** - 每次修改创建新版本，历史版本不可变
+4. **版本恢复** - 基于旧版本创建新版本
+5. **不同版本并存** - 不同问卷可引用同一题目的不同版本
+6. **使用关系查询** - 查看题目被哪些问卷使用
+7. **题库管理** - 个人收藏夹功能
+8. **跨问卷单题统计** - 按题目谱系聚合所有问卷的回答数据
 
-## 2. 项目大致目录
+## 项目结构
 
-```text
-大作业一/
-├─ backend/                    # FastAPI 后端
-│  ├─ app/
-│  │  ├─ main.py               # 应用入口
-│  │  ├─ config.py             # 配置读取
-│  │  ├─ database.py           # MongoDB 连接与索引初始化
-│  │  ├─ models/               # Pydantic 模型
-│  │  ├─ routes/               # 路由层（auth/surveys/responses/statistics）
-│  │  ├─ services/             # 业务逻辑层
-│  │  └─ middlewares/          # JWT 鉴权中间件
-│  ├─ tests/                   # pytest 测试
-│  └─ requirements.txt         # Python 依赖
-│
-├─ frontend/                   # React + Vite 前端
-│  ├─ src/
-│  │  ├─ components/           # 页面核心组件（Dashboard/Editor/Fill/Statistics）
-│  │  ├─ pages/                # 页面入口
-│  │  ├─ services/             # API 调用层
-│  │  ├─ types/                # TypeScript 类型定义
-│  │  ├─ App.tsx               # 前端应用入口
-│  │  └─ App.css               # 样式
-│  └─ package.json             # Node 依赖与脚本
-│
-├─ doc_pic/                    # 文档截图与示意图
-├─ *.md                        # 设计、接口、测试、报告等文档
-└─ README.md                   # 当前说明文件
+```
+backend/
+├── app/
+│   ├── main.py                     # FastAPI 入口
+│   ├── config.py                   # 配置
+│   ├── database.py                 # MongoDB 连接与索引
+│   ├── models/
+│   │   ├── user.py                 # 用户模型
+│   │   ├── survey.py               # 问卷模型（含 SurveyQuestionRef）
+│   │   ├── response.py             # 答卷模型
+│   │   └── question.py             # 题目模型（第二阶段新增）
+│   ├── services/
+│   │   ├── auth_service.py         # 认证服务
+│   │   ├── survey_service.py       # 问卷服务（已改造）
+│   │   ├── response_service.py     # 答卷服务（已改造）
+│   │   ├── statistics_service.py   # 统计服务（已改造+新增跨问卷）
+│   │   └── question_service.py     # 题目服务（第二阶段新增）
+│   ├── routes/
+│   │   ├── auth.py
+│   │   ├── surveys.py
+│   │   ├── responses.py
+│   │   ├── statistics.py           # 新增跨问卷统计接口
+│   │   └── questions.py            # 题目路由（第二阶段新增）
+│   ├── middlewares/
+│   │   └── auth.py                 # JWT 认证中间件
+│   └── utils/
+│       └── response.py             # 统一响应格式
+├── tests/
+│   ├── conftest.py                 # 测试基础设施（已扩展）
+│   ├── test_auth.py                # 14 个认证测试
+│   ├── test_surveys.py             # 6 个问卷测试
+│   ├── test_responses.py           # 13 个答卷测试
+│   ├── test_statistics.py          # 2 个统计测试
+│   ├── test_jump_validation.py     # 10 个跳转测试
+│   └── test_questions.py           # 16 个题目测试（第二阶段新增）
+└── scripts/
+    └── migrate_phase2.py           # 数据迁移脚本
+
+frontend/
+├── src/
+│   ├── App.tsx                     # 路由（新增 /questions）
+│   ├── types/index.ts              # 类型定义（已扩展）
+│   ├── services/api.ts             # API 客户端（已扩展）
+│   ├── pages/
+│   │   └── Dashboard.tsx           # 仪表盘（新增题目管理入口）
+│   └── components/
+│       ├── AuthModal.tsx           # 登录/注册
+│       ├── SurveyEditor.tsx        # 问卷编辑器（已改造）
+│       ├── SurveyFill.tsx          # 问卷填写
+│       ├── StatisticsView.tsx      # 统计查看
+│       └── QuestionManager.tsx     # 题目管理（第二阶段新增）
 ```
 
----
+## 启动方式
 
-## 3. 项目内容总览
-
-### 后端（`backend/`）
-- 框架：FastAPI
-- 数据库：MongoDB（PyMongo）
-- 能力：鉴权、问卷管理、答卷提交、统计分析、规则校验
-- 特点：
-  - 统一响应格式 `{code, message, data}`
-  - 业务层与路由层解耦
-  - 跳转逻辑与校验逻辑可配置（数据驱动）
-
-### 前端（`frontend/`）
-- 框架：React + Vite + TypeScript
-- 核心页面：
-  - Dashboard（问卷列表与操作）
-  - SurveyEditor（问卷编辑与逻辑配置）
-  - SurveyFill（填写问卷）
-  - StatisticsView（统计展示）
-- 特点：
-  - 与后端 API 对齐的类型定义
-  - 与后端一致的部分业务规则校验
-
-### 测试（`backend/tests/`）
-- 使用 `pytest`
-- 覆盖认证、问卷管理、答卷提交、统计、跳转校验等核心流程
-
----
-
-## 4. 快速开始
-
-### 4.1 启动后端
-
-```powershell
+### 安装依赖
+```bash
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt  
+```
+
+### 数据迁移（从第一阶段升级）
+```bash
+cd backend
+python -m scripts.migrate_phase2
+```
+
+### 启动后端
+```bash
+cd backend
 python -m uvicorn app.main:app --reload
 ```
 
-### 4.2 启动前端
-
-```powershell
+### 启动前端
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-### 4.3 运行测试
-
-```powershell
-cd backend
-python -m pytest tests -q
+### 运行测试
+```bash
+cd db-project1
+.venv/Scripts/python -m pytest backend/tests/ -v
 ```
 
----
+## 数据库设计
 
-## 5.贡献者
+详见 `数据库设计.md`
 
-第9组
+## API 文档
 
-- 吴晨曦：[wcxxx57 (Wu Chenxi)](https://github.com/wcxxx57)
-
-- 丁熙妍：[dxy831 (Ding Xiyan)](https://github.com/dxy831)
+详见 `API说明.md`

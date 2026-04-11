@@ -34,6 +34,14 @@ class QuestionNewVersionRequest(BaseModel):
     parent_version_number: Optional[int] = Field(None, description="基于哪个版本创建（可选）")
 
 
+class QuestionUpdateVersionRequest(BaseModel):
+    """更新指定版本内容请求（原地修改，仅当该版本未被已发布/已关闭问卷使用时允许）"""
+    type: str = Field(..., description="题目类型")
+    title: str = Field(..., min_length=1, max_length=500, description="题目文本")
+    options: Optional[List[dict]] = Field(None, description="选项列表")
+    validation: Optional[dict] = Field(None, description="校验规则")
+
+
 class QuestionShareRequest(BaseModel):
     """共享题目请求"""
     username: str = Field(..., min_length=1, description="共享目标用户名")

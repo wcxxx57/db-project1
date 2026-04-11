@@ -350,6 +350,22 @@ export async function createNewVersion(
   }
 }
 
+export async function updateVersion(
+  questionId: string,
+  versionNumber: number,
+  payload: CreateVersionRequest,
+): Promise<{ question_id: string; version_number: number; updated_at: string; mode: string }> {
+  try {
+    const resp = await apiClient.put<ApiResponse<any>>(
+      `/questions/${questionId}/versions/${versionNumber}`,
+      payload,
+    );
+    return parseApiResponse(resp.data);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
 export async function getVersionHistory(
   questionId: string,
 ): Promise<QuestionVersion[]> {

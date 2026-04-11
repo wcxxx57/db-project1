@@ -8,6 +8,7 @@ from app.middlewares.auth import get_current_user
 from app.models.question import (
     QuestionCreateRequest,
     QuestionNewVersionRequest,
+    QuestionUpdateVersionRequest,
     QuestionShareRequest,
     QuestionUnshareRequest,
 )
@@ -18,6 +19,7 @@ from app.services.question_service import (
     get_banked_questions,
     get_question_detail,
     create_new_version,
+    update_version,
     get_version_history,
     restore_version,
     share_question,
@@ -135,6 +137,29 @@ def api_create_new_version(
         result = create_new_version(
             question_id=question_id,
             user_id=current_user["user_id"],
+            data=payload.model_dump(),
+        )
+        return JSONResponse(
+            status_code=200,
+            content=jsonable_encoder(success_response(data=result)),
+        )
+    except QuestionServiceError as exc:
+        return _handle_error(exc)
+
+
+@router.put("/{question_id}/versions/{version_number}")
+def api_update_version(
+    payload: QuestionUpdateVersionRequest,
+    question_id: str = Path(..., description="题目谱系ID"),
+    version_number: int = Path(..., description="版本号"),
+    current_user: dict = Depends(get_current_user),
+):
+    """原地更新指定版本内容（仅当该版本未被已发布/已关闭问卷使用时允许）"""
+    try:
+        result = update_version(
+            question_id=question_id,
+            user_id=current_user["user_id"],
+            version_number=version_number,
             data=payload.model_dump(),
         )
         return JSONResponse(

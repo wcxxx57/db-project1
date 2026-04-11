@@ -304,3 +304,110 @@ def test_shared_user_can_use_question_in_survey(api_client):
         json={"questions": [{"question_id": "q1", "order": 1, "question_ref_id": qid, "version_number": 1}]},
     )
     assert update_resp.status_code == 200
+
+
+def test_update_version_in_place_should_succeed_when_only_draft_surveys_reference(api_client):
+    """测试仅草稿问卷引用时，允许原地修改版本"""
+    client, ctx = api_client
+
+    create_resp = client.post("/questions", json={"type": "text_input", "title": "v1-草稿可改"})
+    qid = create_resp.json()["data"]["question_id"]
+
+    survey_resp = client.post("/surveys", json={"title": "草稿问卷", "settings": {"allow_anonymous": True, "allow_multiple": False}})
+    survey_id = survey_resp.json()["data"]["survey_id"]
+    client.put(
+        f"/surveys/{survey_id}",
+        json={"questions": [{"question_id": "q1", "order": 1, "question_ref_id": qid, "version_number": 1}]},
+    )
+
+    update_resp = client.put(
+        f"/questions/{qid}/versions/1",
+        json={"type": "text_input", "title": "v1-草稿已改", "validation": {"min_length": 2}},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["data"]["mode"] == "in_place"
+    assert update_resp.json()["data"]["version_number"] == 1
+
+    detail = client.get(f"/questions/{qid}").json()["data"]
+    assert detail["latest_version_number"] == 1
+    assert len(detail["versions"]) == 1
+    assert detail["versions"][0]["title"] == "v1-草稿已改"
+
+
+def test_update_version_in_place_should_fail_when_published_survey_references(api_client):
+    """测试已发布问卷引用时，禁止原地修改版本"""
+    client, ctx = api_client
+
+    create_resp = client.post("/questions", json={"type": "text_input", "title": "v1-发布保护"})
+    qid = create_resp.json()["data"]["question_id"]
+
+    survey_resp = client.post("/surveys", json={"title": "发布问卷", "settings": {"allow_anonymous": True, "allow_multiple": False}})
+    survey_id = survey_resp.json()["data"]["survey_id"]
+    client.put(
+        f"/surveys/{survey_id}",
+        json={"questions": [{"question_id": "q1", "order": 1, "question_ref_id": qid, "version_number": 1}]},
+    )
+    client.post(f"/surveys/{survey_id}/publish")
+
+    update_resp = client.put(
+        f"/questions/{qid}/versions/1",
+        json={"type": "text_input", "title": "不应成功", "validation": {"min_length": 2}},
+    )
+    assert update_resp.status_code == 403
+    assert update_resp.json()["code"] == 2002
+
+    detail = client.get(f"/questions/{qid}").json()["data"]
+    assert detail["versions"][0]["title"] == "v1-发布保护"
+
+
+def test_update_version_in_place_should_fail_when_closed_survey_references(api_client):
+    """测试已关闭问卷引用时，禁止原地修改版本"""
+    client, ctx = api_client
+
+    create_resp = client.post("/questions", json={"type": "text_input", "title": "v1-关闭保护"})
+    qid = create_resp.json()["data"]["question_id"]
+
+    survey_resp = client.post("/surveys", json={"title": "关闭问卷", "settings": {"allow_anonymous": True, "allow_multiple": False}})
+    survey_id = survey_resp.json()["data"]["survey_id"]
+    client.put(
+        f"/surveys/{survey_id}",
+        json={"questions": [{"question_id": "q1", "order": 1, "question_ref_id": qid, "version_number": 1}]},
+    )
+    client.post(f"/surveys/{survey_id}/publish")
+    client.post(f"/surveys/{survey_id}/close")
+
+    update_resp = client.put(
+        f"/questions/{qid}/versions/1",
+        json={"type": "text_input", "title": "不应成功", "validation": {"min_length": 2}},
+    )
+    assert update_resp.status_code == 403
+    assert update_resp.json()["code"] == 2002
+
+
+def test_protected_version_should_allow_create_new_version(api_client):
+    """测试受保护版本不能原地改，但可创建新版本"""
+    client, ctx = api_client
+
+    create_resp = client.post("/questions", json={"type": "text_input", "title": "v1"})
+    qid = create_resp.json()["data"]["question_id"]
+
+    survey_resp = client.post("/surveys", json={"title": "发布引用", "settings": {"allow_anonymous": True, "allow_multiple": False}})
+    survey_id = survey_resp.json()["data"]["survey_id"]
+    client.put(
+        f"/surveys/{survey_id}",
+        json={"questions": [{"question_id": "q1", "order": 1, "question_ref_id": qid, "version_number": 1}]},
+    )
+    client.post(f"/surveys/{survey_id}/publish")
+
+    block_resp = client.put(
+        f"/questions/{qid}/versions/1",
+        json={"type": "text_input", "title": "v1-不应成功"},
+    )
+    assert block_resp.status_code == 403
+
+    new_ver_resp = client.post(
+        f"/questions/{qid}/versions",
+        json={"type": "text_input", "title": "v2-允许创建", "parent_version_number": 1},
+    )
+    assert new_ver_resp.status_code == 200
+    assert new_ver_resp.json()["data"]["version_number"] == 2
