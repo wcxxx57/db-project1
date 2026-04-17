@@ -411,3 +411,37 @@ def test_protected_version_should_allow_create_new_version(api_client):
     )
     assert new_ver_resp.status_code == 200
     assert new_ver_resp.json()["data"]["version_number"] == 2
+
+
+def test_shared_user_cannot_update_version_in_place_but_can_create_new_version(api_client):
+    """测试共享接收者不能原地修改，但可以创建新版本"""
+    client, ctx = api_client
+
+    teammate_id = ctx.create_user("teammate")
+
+    create_resp = client.post("/questions", json={"type": "text_input", "title": "共享原题"})
+    qid = create_resp.json()["data"]["question_id"]
+    client.post(f"/questions/{qid}/share", json={"username": "teammate"})
+
+    ctx.switch_user(teammate_id, "teammate")
+
+    update_resp = client.put(
+        f"/questions/{qid}/versions/1",
+        json={"type": "text_input", "title": "不应允许直接修改"},
+    )
+    assert update_resp.status_code == 403
+    assert update_resp.json()["code"] == 2002
+    assert "不能直接修改" in update_resp.json()["message"]
+
+    new_version_resp = client.post(
+        f"/questions/{qid}/versions",
+        json={"type": "text_input", "title": "共享后的新版本", "parent_version_number": 1},
+    )
+    assert new_version_resp.status_code == 200
+    assert new_version_resp.json()["data"]["version_number"] == 2
+
+    detail = client.get(f"/questions/{qid}").json()["data"]
+    assert detail["latest_version_number"] == 2
+    assert detail["versions"][0]["title"] == "共享原题"
+    assert detail["versions"][1]["title"] == "共享后的新版本"
+    assert detail["versions"][1]["parent_version_number"] == 1

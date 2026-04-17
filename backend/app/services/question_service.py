@@ -226,10 +226,18 @@ def create_new_version(question_id: str, user_id: str, data: Dict[str, Any]) -> 
 
 
 def update_version(question_id: str, user_id: str, version_number: int, data: Dict[str, Any]) -> Dict[str, Any]:
-    """原地更新指定版本内容（仅当该版本未被已发布/已关闭问卷使用时允许）"""
+    """原地更新指定版本内容（仅题目创建者可操作，且该版本未被已发布/已关闭问卷使用时允许）"""
     db = get_db()
     doc = _get_question_doc(question_id)
     _check_access(doc, user_id)
+
+    ac = doc.get("access_control", {})
+    if ac.get("creator") != user_id:
+        raise QuestionServiceError(
+            ErrorCodes.NO_PERMISSION,
+            "共享给我的题目不能直接修改，请创建新版本",
+            403,
+        )
 
     # 验证版本存在
     versions = doc.get("versions", [])

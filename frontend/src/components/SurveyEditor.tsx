@@ -14,6 +14,7 @@ import {
   getSurveyDetail,
   updateSurvey,
   createQuestion,
+  getMyQuestions,
   getBankedQuestions,
   getSharedQuestions,
   getQuestionDetail,
@@ -325,7 +326,7 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
   const [pickerQuestions, setPickerQuestions] = useState<QuestionListItem[]>(
     [],
   );
-  const [pickerTab, setPickerTab] = useState<"my" | "shared">("my");
+  const [pickerTab, setPickerTab] = useState<"my" | "shared" | "bank">("my");
   const [pickerDetails, setPickerDetails] = useState<
     Record<string, QuestionDetail>
   >({});
@@ -369,8 +370,10 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
     try {
       const data =
         pickerTab === "my"
-          ? await getBankedQuestions()
-          : await getSharedQuestions();
+          ? await getMyQuestions()
+          : pickerTab === "bank"
+            ? await getBankedQuestions()
+            : await getSharedQuestions();
       setPickerQuestions(data);
       setPickerDetails({});
       setPickerExpandedId(null);
@@ -1772,9 +1775,10 @@ export default function SurveyEditor({ surveyId, onBack }: SurveyEditorProps) {
               >
                 {(
                   [
-                    ["my", "我的题库"],
+                    ["my", "我的题目"],
                     ["shared", "共享给我"],
-                  ] as ["my" | "shared", string][]
+                    ["bank", "我的题库"],
+                  ] as ["my" | "shared" | "bank", string][]
                 ).map(([key, label]) => (
                   <button
                     key={key}

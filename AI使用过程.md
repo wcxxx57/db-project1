@@ -1,4 +1,4 @@
-# AI Usage Logs 【第二阶段】
+# AI Usage Logs（第二阶段）
 
 ## 1
 
@@ -325,6 +325,145 @@ AI 对 `db_design2.md` 进行了全面评审，逐一验证了 8 个需求的覆
    - `pytest backend/tests/test_questions.py -v`：19 passed
    - `pytest backend/tests/ -v`：65 passed
 
-### 修改
+---
 
-本轮主要是后端逻辑与测试修复；前端"编辑已有问卷题目显示题库按钮并做去重展示"逻辑已在此前提交中实现（基于 `bankedRefIds` + `addToBank` 幂等）。
+## 15
+
+### prompt
+
+根据 `第二阶段需求变更.md` 重新梳理题目来源语义：确认“我的题目”应表示**我创建的所有题目**（包含已入库和未入库），而不应等同于“我的题库”；并据此补齐前端页面和文档中缺失的“我的题目”入口。
+
+### result
+
+完成了“我的题目”语义校正与前端/文档同步：
+
+1. **需求与语义确认**
+   - 明确“我的题目” = 当前用户创建的全部题目（已入库 + 未入库）
+   - “我的题库” = 当前用户主动加入题库的题目集合，是另一种组织维度，不等同于“我的题目”
+   - “共享给我” = 其他用户共享给当前用户的题目
+
+2. **后端语义核对**
+   - 核对 `backend/app/routes/questions.py` 与 `backend/app/services/question_service.py`
+   - 确认 `GET /questions/my` 的查询条件是 `access_control.creator == user_id`，即“我创建的所有题目”，现有后端实现无需修改
+
+3. **前端题目管理页调整（`QuestionManager.tsx`）**
+   - `TabType` 从 `bank | shared` 扩展为 `my | shared | bank`
+   - 默认标签改为“我的题目”
+   - `loadQuestions()` 增加 `getMyQuestions()` 分支
+   - Tab 文案改为“我的题目 / 共享给我 / 我的题库”
+   - 空状态文案按三类来源分别调整
+   - 将“未共享”状态、删除按钮、共享管理区块从仅 `bank` 可见调整为在“我的题目”下也可见，避免自己创建但未入库的题目无法管理
+
+4. **前端问卷编辑器调整（`SurveyEditor.tsx`）**
+   - 选题弹窗 `pickerTab` 从两类扩展为 `my | shared | bank`
+   - 选题来源改为“我的题目 / 共享给我 / 我的题库”
+   - `loadPickerQuestions()` 改为分别调用 `getMyQuestions()` / `getSharedQuestions()` / `getBankedQuestions()`
+   - 修复此前将 `my` 误用为“我的题库”数据源的问题
+
+5. **文档同步更新**
+   - `项目完成报告2.md`：将“从题库/共享题目选题”改为包含“我的题目”，并补充 `access_control.creator` 对应“我创建的题目”查询语义
+   - `README.md`：补充三类题目来源（我的题目 / 共享给我 / 我的题库）的区分说明
+
+6. **验证结果**
+   - 前端构建通过：`npm --prefix frontend run build`
+   - 后端测试通过：`pytest backend/tests/test_questions.py` → `19 passed`
+
+---
+
+## 16
+
+### prompt
+
+”我的题目“里面，是不是需要加上”加入我的题库“的按钮，但如果已经加入题库过的话，就应该显示”已添加入题库"，防止重复加入，参考## 12
+
+### result
+
+在 `frontend/src/components/QuestionManager.tsx` 中为“我的题目”和“共享给我”标签增加了防重复的“加入我的题库”按钮功能：
+
+1. **添加状态与数据获取**：新增 `bankedRefIds` 状态，并在 `loadQuestions` 加载其他列表数据时，同步/额外拉取题库数据 `getBankedQuestions()`，构建题库中已存在题目的 ID 集合。
+2. **逻辑处理与反馈**：新增拉跨组件状态处理函数 `handleAddToBank`，在点击按钮后执行加入题库请求，并把结果 ID 吸收入 `bankedRefIds` 从而使得按钮实时失去点击功能并变成“已添加到题库”。
+3. **渲染防重**：在题目展开的操作栏渲染阶段加入判断。当标签页不是“我的题库”时，如果题目已在 `bankedRefIds` 中，则渲染无法重复点击的绿色“✅ 已添加入题库”静态标牌；否则渲染“📥 加入我的题库”按钮进行快速添加。
+
+---
+
+## 17
+
+### prompt
+
+根据 `第二阶段需求变更.md`，确认“共享给我的题目”不应允许直接修改，而只能基于原题创建新版本；补齐这一限制，并在 `backend/tests` 中新增自动化测试，同时更新 `测试用例.md`。
+
+### result
+
+本次完成了“共享题目版本编辑权限”规则的补齐，并同步补强测试与文档：
+
+1. **后端增加共享题目原地修改限制**
+   - 修改 `backend/app/services/question_service.py`
+   - 在 `update_version()` 中增加创建者校验：
+     - 若当前用户不是题目创建者，而只是共享接收者，则禁止直接原地修改版本
+     - 返回 403 和友好提示“共享给我的题目不能直接修改，请创建新版本”
+   - 同时保留原有规则：
+     - 若该版本已被已发布/已关闭问卷引用，也仍然禁止原地修改
+     - 共享接收者仍然可以通过 `create_new_version()` 基于原题创建新版本
+
+2. **前端同步调整编辑交互**
+   - 修改 `frontend/src/components/QuestionManager.tsx`
+   - 在“共享给我”标签下点击“编辑”时，不再提供“修改当前版本 / 创建新版本”的二选一弹窗
+   - 直接进入“创建新版本”模式，并显示提示“共享给我的题目不能直接修改，只能创建新版本”
+   - 避免用户先填写后再被后端拒绝，保证前后端行为一致
+
+3. **新增后端自动化测试**
+   - 修改 `backend/tests/test_questions.py`
+   - 新增用例：
+     - `test_shared_user_cannot_update_version_in_place_but_can_create_new_version`
+   - 覆盖场景：
+     - 题目创建者共享题目给 teammate
+     - teammate 直接调用 `PUT /questions/{qid}/versions/1` 被拒绝（403 + 错误码 2002）
+     - teammate 随后调用 `POST /questions/{qid}/versions` 成功创建 v2
+     - 原版本内容保持不变，新版本正确挂接 `parent_version_number=1`
+
+4. **更新测试文档**
+   - 修改 `测试用例.md`
+   - 将题目域测试数量从 19 更新为 20
+   - 全量自动化测试数量从 65 更新为 66
+   - 补充新的第 20 条测试用例说明，记录“共享接收者不能原地修改，但可以创建新版本”的预期行为
+
+5. **验证结果**
+   - `pytest backend/tests/test_questions.py`
+   - 结果：`20 passed`
+
+---
+
+## 18
+### prompt
+在“我的题库”页面把“删除”改为“移出”，并且点击后仅调用 removeFromBank 从题库中移除，而“我的题目”页面保持原来的删除整个题目逻辑。随后补充说明并清理 QuestionManager.tsx 中原本就存在的 TypeScript 未使用提示。
+
+### result
+本次完成了题库移除语义与前端细节清理：
+
+1. **区分“我的题库”和“我的题目”的按钮语义**
+
+   - 修改 frontend/src/components/QuestionManager.tsx
+   - 在“我的题库”标签下，原操作按钮文案由“删除”改为“移出”
+   - 点击后不再调用 deleteQuestion()，而是仅调用 removeFromBank()，只把该题目从当前用户题库中移除
+   - 确认弹窗文案调整为“确定将该题目移出题库？”
+   - 移除成功后提示“题目已移出题库”，并同步更新本地 bankedRefIds 状态
+
+2. **保留“我的题目”原有删除逻辑**
+
+   - “我的题目”标签下仍保持原来的 deleteQuestion() 逻辑
+   - 若题目被问卷引用，仍会先查询 getQuestionUsage()，并在确认框中展示受影响问卷，再执行真正删除
+   - 保证“移出题库”和“删除题目”是两个明确不同的操作
+
+3. **解释并确认 TS 未使用提示来源**
+
+   - 说明 QuestionManager.tsx 中的提示只是 IDE/TypeScript 的“已声明但未使用”提醒，不是本次改动新增报错
+   - 具体包括未使用的类型导入 CreateQuestionRequest、CreateVersionRequest，以及未使用常量 TYPE_ICON
+  
+4. **按需清理未使用内容**
+   
+   - 根据后续要求，进一步清理 frontend/src/components/QuestionManager.tsx
+   - 删除未使用的类型导入：
+     - CreateQuestionRequest
+     - CreateVersionRequest
+   - 删除未使用常量：
+     - TYPE_ICON
